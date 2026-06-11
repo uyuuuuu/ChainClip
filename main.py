@@ -23,13 +23,10 @@ def analyze(path, output_path):
         videointelligence.Feature.SHOT_CHANGE_DETECTION,
     ]
 
-    with open(path, "rb") as f:
-        input_content = f.read()
-
     operation = client.annotate_video(
         request={
             "features": features,
-            "input_content": input_content,
+            "input_uri": path,
         }
     )
 
