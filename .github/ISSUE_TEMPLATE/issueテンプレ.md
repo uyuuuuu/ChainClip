@@ -1,7 +1,7 @@
 ---
 name: Issueテンプレ
 about: 通常のテンプレ
-title: ''
+title: "[mobile/server区分][feat/bug/update/ref]これをこうする"
 labels: ''
 assignees: ''
 
