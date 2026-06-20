@@ -1,5 +1,5 @@
 {
-  "name": "chainclip-app",
+  "name": "ChainClip",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
