@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "chainclip-app",
-    "slug": "chainclip-app",
+    "name": "ChainClip",
+    "slug": "chain-clip",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "chainclipapp",
+    "scheme": "Chainclip",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.nazuupa.chainclipapp",
+      "bundleIdentifier": "com.nazuupa.chainclip",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
