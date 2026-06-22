@@ -1,6 +1,8 @@
 venv/
-.env
-.env.*
-.claude
+.claude/
 node_modules/
 .expo/
+temp/
+.env
+.env.*
+CLAUDE.md

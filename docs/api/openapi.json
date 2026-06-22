@@ -1,0 +1,279 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ChainClip API",
+    "description": "複数動画をシーン分割・トリミングして1本の動画にまとめるChainClipのバックエンドAPI。",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/projects": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Create Project Endpoint",
+        "description": "project作成、status=draft、access_token返却。",
+        "operationId": "create_project_endpoint_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateProjectResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/clips/upload-urls": {
+      "post": {
+        "tags": [
+          "clips"
+        ],
+        "summary": "Request Upload Urls Endpoint",
+        "description": "動画のバリデーション、複数clip作成、GCSアップロード用signed URL発行、project.status=uploading。",
+        "operationId": "request_upload_urls_endpoint_projects__project_id__clips_upload_urls_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestUploadUrlsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClipUploadUrlResponse"
+                  },
+                  "title": "Response Request Upload Urls Endpoint Projects  Project Id  Clips Upload Urls Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ClipUploadRequestBody": {
+        "properties": {
+          "originalFilename": {
+            "type": "string",
+            "title": "Originalfilename"
+          },
+          "contentType": {
+            "type": "string",
+            "title": "Contenttype"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "title": "Sizebytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "originalFilename",
+          "contentType",
+          "sizeBytes"
+        ],
+        "title": "ClipUploadRequestBody"
+      },
+      "ClipUploadUrlResponse": {
+        "properties": {
+          "clipId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Clipid"
+          },
+          "clipIndex": {
+            "type": "integer",
+            "title": "Clipindex"
+          },
+          "uploadUrl": {
+            "type": "string",
+            "title": "Uploadurl"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clipId",
+          "clipIndex",
+          "uploadUrl"
+        ],
+        "title": "ClipUploadUrlResponse"
+      },
+      "CreateProjectRequest": {
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Deviceid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deviceId"
+        ],
+        "title": "CreateProjectRequest"
+      },
+      "CreateProjectResponse": {
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Projectid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "accessToken": {
+            "type": "string",
+            "title": "Accesstoken"
+          }
+        },
+        "type": "object",
+        "required": [
+          "projectId",
+          "status",
+          "accessToken"
+        ],
+        "title": "CreateProjectResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "RequestUploadUrlsRequest": {
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "title": "Accesstoken"
+          },
+          "clips": {
+            "items": {
+              "$ref": "#/components/schemas/ClipUploadRequestBody"
+            },
+            "type": "array",
+            "title": "Clips"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accessToken",
+          "clips"
+        ],
+        "title": "RequestUploadUrlsRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "ローカル開発"
+    }
+  ]
+}
