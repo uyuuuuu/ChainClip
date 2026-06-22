@@ -2,3 +2,6 @@ venv/
 .env
 .env.*
 temp/
+.claude
+node_modules/
+.expo/
