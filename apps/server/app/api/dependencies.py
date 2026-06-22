@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from dotenv import load_dotenv
 
-from app.infra.db.repository import ProjectRepo
+from app.infra.db.repository import ClipRepo, ProjectRepo
 
 load_dotenv()
 
@@ -30,3 +30,7 @@ def get_db_session() -> Generator[Session, None, None]:
 
 def get_project_repo(session: Session = Depends(get_db_session)) -> ProjectRepo:
     return ProjectRepo(session)
+
+
+def get_clip_repo(session: Session = Depends(get_db_session)) -> ClipRepo:
+    return ClipRepo(session)

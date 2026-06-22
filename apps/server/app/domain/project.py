@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
+from app.domain.error import AccessDeniedError, InvalidProjectStateError
+
 
 class ProjectStatus(str, Enum):
     DRAFT = "draft"         # 作成ボタン押した
@@ -41,3 +43,19 @@ class Project:
             status=ProjectStatus.DRAFT,
             access_token=secrets.token_urlsafe(32),
         )
+
+    def verify_access(self, access_token: str) -> None:
+        """access_tokenが一致しない場合はAccessDeniedErrorを投げる。"""
+        if not secrets.compare_digest(self.access_token, access_token):
+            raise AccessDeniedError("access_token does not match")
+
+    def mark_uploading(self) -> None:
+        """clipのアップロードURLを発行したら呼ぶ。"""
+        self.status = ProjectStatus.UPLOADING
+
+    def assert_status(self, expected: ProjectStatus) -> None:
+        """現在のstatusがexpectedでない場合はInvalidProjectStateErrorを投げる。"""
+        if self.status != expected:
+            raise InvalidProjectStateError(
+                f"expected status={expected.value} but actual={self.status.value}"
+            )
