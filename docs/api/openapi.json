@@ -29,250 +29,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/CreateProjectResponse"
                 }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/projects/{project_id}/prepare": {
-      "post": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "Start Prepare Endpoint",
-        "description": "全clipがuploadedならprepare worker起動、project.status=preparing。",
-        "operationId": "start_prepare_endpoint_projects__project_id__prepare_post",
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          },
-          {
-            "name": "access_token",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Access Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/projects/{project_id}": {
-      "get": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "Get Project Status Endpoint",
-        "description": "status確認。preparing中はclipsTotal/clipsReady、readyなら変換後mp4 URLとシーンJSON、\ncompletedならshareUrl/finalVideoUrlを返す。",
-        "operationId": "get_project_status_endpoint_projects__project_id__get",
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/projects/{project_id}/render": {
-      "post": {
-        "tags": [
-          "projects"
-        ],
-        "summary": "Start Render Endpoint",
-        "description": "selectedScenesを受け取りedit_config保存、render worker起動、project.status=rendering。",
-        "operationId": "start_render_endpoint_projects__project_id__render_post",
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RenderRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/projects/{project_id}/clips/upload-urls": {
-      "post": {
-        "tags": [
-          "clips"
-        ],
-        "summary": "Request Upload Urls Endpoint",
-        "description": "動画のバリデーション、複数clip作成、GCSアップロード用signed URL発行、project.status=uploading。",
-        "operationId": "request_upload_urls_endpoint_projects__project_id__clips_upload_urls_post",
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RequestUploadUrlsRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/clips/{clip_id}/upload-complete": {
-      "put": {
-        "tags": [
-          "clips"
-        ],
-        "summary": "Complete Upload Endpoint",
-        "description": "project idを探してaccess_tokenを照合、GCS object存在確認、project_clips.status=uploaded。",
-        "operationId": "complete_upload_endpoint_clips__clip_id__upload_complete_put",
-        "parameters": [
-          {
-            "name": "clip_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Clip Id"
-            }
-          },
-          {
-            "name": "access_token",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Access Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
               }
             }
           },
@@ -292,41 +51,43 @@
   },
   "components": {
     "schemas": {
-      "ClipUploadRequest": {
-        "properties": {
-          "original_filename": {
-            "type": "string",
-            "title": "Original Filename"
-          },
-          "content_type": {
-            "type": "string",
-            "title": "Content Type"
-          },
-          "size_bytes": {
-            "type": "integer",
-            "title": "Size Bytes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "original_filename",
-          "content_type",
-          "size_bytes"
-        ],
-        "title": "ClipUploadRequest"
-      },
       "CreateProjectRequest": {
         "properties": {
-          "device_id": {
+          "deviceId": {
             "type": "string",
-            "title": "Device Id"
+            "format": "uuid",
+            "title": "Deviceid"
           }
         },
         "type": "object",
         "required": [
-          "device_id"
+          "deviceId"
         ],
         "title": "CreateProjectRequest"
+      },
+      "CreateProjectResponse": {
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Projectid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "accessToken": {
+            "type": "string",
+            "title": "Accesstoken"
+          }
+        },
+        "type": "object",
+        "required": [
+          "projectId",
+          "status",
+          "accessToken"
+        ],
+        "title": "CreateProjectResponse"
       },
       "HTTPValidationError": {
         "properties": {
@@ -340,46 +101,6 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
-      },
-      "RenderRequest": {
-        "properties": {
-          "access_token": {
-            "type": "string",
-            "title": "Access Token"
-          },
-          "edit_config": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Edit Config"
-          }
-        },
-        "type": "object",
-        "required": [
-          "access_token",
-          "edit_config"
-        ],
-        "title": "RenderRequest"
-      },
-      "RequestUploadUrlsRequest": {
-        "properties": {
-          "access_token": {
-            "type": "string",
-            "title": "Access Token"
-          },
-          "clips": {
-            "items": {
-              "$ref": "#/components/schemas/ClipUploadRequest"
-            },
-            "type": "array",
-            "title": "Clips"
-          }
-        },
-        "type": "object",
-        "required": [
-          "access_token",
-          "clips"
-        ],
-        "title": "RequestUploadUrlsRequest"
       },
       "ValidationError": {
         "properties": {
@@ -422,5 +143,11 @@
         "title": "ValidationError"
       }
     }
-  }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "ローカル開発"
+    }
+  ]
 }

@@ -1,14 +1,22 @@
-from pathlib import Path
+from app.api.routes import projects
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from app.routes import videos
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 load_dotenv()
-BASE_DIR = Path(__file__).resolve().parent
+
 
 app = FastAPI()
 
-app.include_router(videos.router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "https://editor.swagger.io",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-app.mount("/", StaticFiles(directory=BASE_DIR / "static", html=True), name="static")
+app.include_router(projects.router)

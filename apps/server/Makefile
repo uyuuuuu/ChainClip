@@ -1,4 +1,4 @@
-PYTHON := .\.venv\Scripts\python.exe
+PYTHON := python
 
 .PHONY: freeze run
 
