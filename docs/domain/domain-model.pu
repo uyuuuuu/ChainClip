@@ -1,0 +1,209 @@
+@startuml domain-model
+title ChainClip ドメインモデル図
+
+skinparam classAttributeIconSize 0
+hide circle
+
+' ===== 列挙型 =====
+
+enum "プロジェクト状態" as ProjectStatus {
+  下書き (draft)
+  アップロード中 (uploading)
+  アップロード完了 (uploaded)
+  準備中 (preparing)
+  編集可能 (ready)
+  結合処理中 (rendering)
+  完成 (completed)
+  失敗 (failed)
+}
+
+enum "クリップ状態" as ClipStatus {
+  アップロード中 (uploading)
+  アップロード完了 (uploaded)
+  解析・変換中 (processing)
+  準備完了 (ready)
+  失敗 (failed)
+}
+
+enum "アセット種別" as AssetKind {
+  元動画 (original_clip)
+  変換後動画 (converted_clip)
+  シーン候補JSON (scene_candidates)
+  完成動画 (final_clip)
+}
+
+enum "保存先プロバイダ" as StorageProvider {
+  GCS (gcs)
+  R2 (r2)
+}
+
+enum "ジョブ種別" as JobType {
+  変換処理 (convert_clip)
+  解析処理 (analyze_clip)
+  完成動画生成 (render_final)
+  一連の処理 (full_pipeline)
+}
+
+enum "ジョブ状態" as JobStatus {
+  実行待ち (queued)
+  実行中 (running)
+  成功 (succeeded)
+  失敗 (failed)
+}
+
+' ===== エンティティ(識別子を持ち、DBに永続化される) =====
+
+class "プロジェクト" as Project {
+  id: UUID
+  状態: プロジェクト状態
+  アクセストークン: 文字列
+  ...
+  --
+  アクセス検証(...)
+  ...
+}
+
+class "クリップ" as Clip {
+  id: UUID
+  プロジェクトID: UUID
+  状態: クリップ状態
+  ...
+  --
+  準備完了にする(...)
+  ...
+}
+
+class "プロジェクトアセット" as ProjectAsset <<未実装: infra/db/models.pyのみ>> {
+  id: UUID
+  種別: アセット種別
+  保存先: 保存先プロバイダ
+  ...
+}
+
+class "処理ジョブ" as ProcessingJob <<未実装: infra/db/models.pyのみ>> {
+  id: UUID
+  種別: ジョブ種別
+  状態: ジョブ状態
+  ...
+}
+
+' ===== 値オブジェクト(識別子を持たず、別のエンティティに埋め込まれる) =====
+
+class "シーン" as Scene <<値オブジェクト>> {
+  シーンID: 文字列
+  開始ms / 終了ms: 整数
+  ラベル: 文字列の配列
+  ...
+}
+
+class "編集設定" as EditConfig <<値オブジェクト>> {
+  バージョン: 整数
+  ...
+}
+
+class "出力設定" as Output <<値オブジェクト>> {
+  アスペクト比: 文字列
+  幅 / 高さ / fps: 整数
+  ...
+}
+
+class "カット" as Cut <<値オブジェクト>> {
+  カットID: 文字列
+  クリップID: UUID
+  開始ms / 終了ms: 整数
+  ...
+}
+
+class "表示変形" as Transform <<値オブジェクト>> {
+  拡大率: 浮動小数
+  Xオフセット / Yオフセット: 浮動小数
+}
+
+class "トランジション" as Transition <<値オブジェクト>> {
+  種別: 文字列
+  長さms: 整数
+}
+
+' ===== 関連 =====
+
+Project "1" *-- "0..*" Clip : 元動画一覧
+Project "1" *-- "0..*" ProjectAsset : 保存ファイル一覧
+Clip "1" o-- "0..*" ProjectAsset : (クリップ単位のファイル)
+Project "1" *-- "0..*" ProcessingJob : 実行履歴一覧
+Clip "1" o-- "0..*" ProcessingJob : (クリップ単位の実行)
+
+Clip "1" ..> "0..*" Scene : 解析結果として生成\n(DB保存せずGCS上のJSONとして提供)
+
+Project "1" *-- "0..1" EditConfig : 編集設定(jsonbで保存)
+EditConfig "1" *-- "1" Output : 出力設定
+EditConfig "1" *-- "0..*" Cut : タイムライン
+Cut "1" *-- "1" Transform : 表示変形
+Cut "1" *-- "0..1" Transition : 次カットへの遷移
+Cut "多" --> "1" Clip : 切り出し元のクリップ
+
+Project --> ProjectStatus
+Clip --> ClipStatus
+ProjectAsset --> AssetKind
+ProjectAsset --> StorageProvider
+ProcessingJob --> JobType
+ProcessingJob --> JobStatus
+
+' ===== メモ =====
+
+note right of Project
+  <b>プロジェクト</b>
+  - ログイン機能を持たないため、deviceId(端末生成のUUID)を
+    擬似的な所有者キーとして使う。ユーザー/デバイスのエンティティは存在しない。
+  - アクセストークンは「この端末がこのプロジェクトを操作する権限」を
+    検証するための推測困難な文字列。共有URL用のshareSlugとは別物。
+  - 状態はプロジェクトの状態機械そのもの。
+    下書き→アップロード中→アップロード完了→準備中→編集可能→結合処理中→完成
+    のいずれかの段階で失敗に遷移しうる。
+  - 編集設定(jsonb)は「完成後に不要ならnullへ戻してもよい」運用上のメモがある
+    (CLAUDE.md参照)。
+end note
+
+note right of Clip
+  <b>クリップ</b>
+  - 1プロジェクトに対して複数行(=複数の元動画)を持つ。並び順は
+    アップロード順であり、最終動画生成時の初期並び順としても使える。
+  - 動画時間は「変換後動画」の長さ。元動画(original_clip)の長さではない点に注意。
+end note
+
+note bottom of Scene
+  <b>シーン</b>
+  - Video Intelligence APIの解析結果からprepare workerが生成する。
+  - DBの正規テーブルには保存せず、GCS上にJSON(アセット種別=シーン候補JSON)
+    として保存し、GET /projects/{projectId} のレスポンスとして
+    クライアントへ都度返す(=実行時に組み立てる値オブジェクト)。
+  - シーンの並び順は表示順の連番。開始ms/終了msは「変換後動画」基準。
+end note
+
+note bottom of EditConfig
+  <b>編集設定 / カット</b>
+  - POST /projects/{projectId}/render のリクエストボディとして
+    クライアントから受け取り、プロジェクトの編集設定としてそのままjsonbで保存する。
+  - カットIDはクライアント生成のUUID。同一シーンを複製して
+    2回使う場合は、同じクリップIDで異なるカットIDを持つ複数のカットになる。
+  - 時間は全てミリ秒の整数。位置・サイズは正規化座標(0.0〜1.0)。
+    どちらも「浮動小数の誤差」「解像度依存」を避けるための設計判断
+    (CLAUDE.md「データの受け渡し」参照)。
+end note
+
+note bottom of ProjectAsset
+  <b>プロジェクトアセット</b>
+  - 元動画/変換後動画/シーン候補JSON/完成動画の4種類のファイルを
+    横断的に1テーブルで管理する設計。
+  - 保存先プロバイダにより保存先がGCS(中間ファイル、解析用)か
+    R2(完成動画、エグレス無料)かが変わる。
+end note
+
+note bottom of ProcessingJob
+  <b>処理ジョブ</b>
+  - Cloud Run Jobsの実行履歴。失敗時の再実行や原因調査のために
+    試行回数とCloud Run実行名を持つ。
+  - ジョブ種別の「一連の処理」は複数の処理をまとめた特殊値で、
+    変換処理/解析処理/完成動画生成の組み合わせとは粒度が異なることに注意。
+end note
+
+@enduml
