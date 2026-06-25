@@ -1,7 +1,10 @@
 PYTHON := python
 VENV := .venv
+IMAGE := asia-northeast1-docker.pkg.dev/hmi2026/chainclip/api:latest
+SERVICE := chainclip-api
+REGION := asia-northeast1
 
-.PHONY: freeze run install activate deactivate migration migrate downgrade
+.PHONY: freeze run install activate deactivate migration migrate downgrade build push deploy
 
 freeze:
 	$(PYTHON) -m pip freeze > requirements.txt
@@ -27,3 +30,13 @@ migrate:
 
 downgrade:
 	$(PYTHON) -m alembic downgrade -1
+
+# docker desktopを起動した状態で実行すること
+build:
+	docker build -t $(IMAGE) .
+
+push:
+	docker push $(IMAGE)
+
+deploy: build push
+	gcloud run deploy $(SERVICE) --image $(IMAGE) --region $(REGION)

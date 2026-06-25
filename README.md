@@ -52,9 +52,7 @@ make downgrade                     # 直前のmigrationを1つ戻す
 docker desktopを立ち上げた状態で行う。
 
 ```
-docker build -t asia-northeast1-docker.pkg.dev/hmi2026/chainclip/api:latest .
-docker push asia-northeast1-docker.pkg.dev/hmi2026/chainclip/api:latest
-gcloud run deploy chainclip-api --image asia-northeast1-docker.pkg.dev/hmi2026/chainclip/api:latest --region asia-northeast1
+make deploy   # build + push + gcloud run deployを一括実行
 ```
 
-最後の`gcloud run deploy`がCloud Run上の新しいリビジョンへの反映コマンド。コンソールから該当サービスを開き「新しいリビジョンを編集してデプロイ」→ pushしたimageを選んでデプロイしても一緒。
+個別に実行する場合は`make build`(image build)、`make push`(Artifact Registryへpush)、最後の`gcloud run deploy chainclip-api --image ... --region ...`部分がCloud Run上の新しいリビジョンへの反映コマンド。コンソールから該当サービスを開き「新しいリビジョンを編集してデプロイ」→ pushしたimageを選んでデプロイしても一緒。
