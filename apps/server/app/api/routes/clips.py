@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.dependencies import get_clip_repo, get_project_repo
 from app.infra.db.repository import ClipRepo, ProjectRepo
+from app.usecase.complete_upload import complete_upload
 from app.usecase.request_upload_urls import ClipUploadRequestItem, request_upload_urls
 
 router = APIRouter(tags=["clips"])
@@ -65,3 +66,32 @@ async def request_upload_urls_endpoint(
         )
         for result in results
     ]
+
+
+class CompleteUploadRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    access_token: str = Field(alias="accessToken")
+
+
+class CompleteUploadResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    clip_id: uuid.UUID = Field(alias="clipId")
+    status: str
+
+
+@router.put("/clips/{clip_id}/upload-complete", response_model=CompleteUploadResponse)
+async def complete_upload_endpoint(
+    clip_id: uuid.UUID,
+    body: CompleteUploadRequest,
+    project_repo: ProjectRepo = Depends(get_project_repo),
+    clip_repo: ClipRepo = Depends(get_clip_repo),
+) -> CompleteUploadResponse:
+    """project idを探してaccess_tokenを照合、clip単位でアップロード完了通知、GCS object存在確認、
+    project_clips.status=uploaded。"""
+    result = complete_upload(
+        project_repo,
+        clip_repo,
+        clip_id=clip_id,
+        access_token=body.access_token,
+    )
+    return CompleteUploadResponse(clip_id=result.clip_id, status=result.status)

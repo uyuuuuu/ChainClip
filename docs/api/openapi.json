@@ -5,6 +5,12 @@
     "description": "複数動画をシーン分割・トリミングして1本の動画にまとめるChainClipのバックエンドAPI。",
     "version": "0.1.0"
   },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "ローカル開発"
+    }
+  ],
   "paths": {
     "/projects": {
       "post": {
@@ -31,6 +37,60 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CreateProjectResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/prepare": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Start Prepare Endpoint",
+        "description": "全clipがuploadedならprepare worker起動、project.status=preparing。",
+        "operationId": "start_prepare_endpoint_projects__project_id__prepare_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartPrepareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartPrepareResponse"
                 }
               }
             }
@@ -105,6 +165,82 @@
           }
         }
       }
+    },
+    "/clips/{clip_id}/upload-complete": {
+      "put": {
+        "tags": [
+          "clips"
+        ],
+        "summary": "Complete Upload Endpoint",
+        "description": "project idを探してaccess_tokenを照合、clip単位でアップロード完了通知、GCS object存在確認、\nproject_clips.status=uploaded。",
+        "operationId": "complete_upload_endpoint_clips__clip_id__upload_complete_put",
+        "parameters": [
+          {
+            "name": "clip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Clip Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompleteUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -155,6 +291,38 @@
           "uploadUrl"
         ],
         "title": "ClipUploadUrlResponse"
+      },
+      "CompleteUploadRequest": {
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "title": "Accesstoken"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accessToken"
+        ],
+        "title": "CompleteUploadRequest"
+      },
+      "CompleteUploadResponse": {
+        "properties": {
+          "clipId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Clipid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clipId",
+          "status"
+        ],
+        "title": "CompleteUploadResponse"
       },
       "CreateProjectRequest": {
         "properties": {
@@ -228,6 +396,38 @@
         ],
         "title": "RequestUploadUrlsRequest"
       },
+      "StartPrepareRequest": {
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "title": "Accesstoken"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accessToken"
+        ],
+        "title": "StartPrepareRequest"
+      },
+      "StartPrepareResponse": {
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Projectid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "projectId",
+          "status"
+        ],
+        "title": "StartPrepareResponse"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -269,11 +469,5 @@
         "title": "ValidationError"
       }
     }
-  },
-  "servers": [
-    {
-      "url": "http://localhost:8000",
-      "description": "ローカル開発"
-    }
-  ]
+  }
 }

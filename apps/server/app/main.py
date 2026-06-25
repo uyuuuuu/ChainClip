@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 from app.domain.error import (
     AccessDeniedError,
+    GcsObjectNotFoundError,
     InvalidClipError,
     InvalidProjectStateError,
     ProjectNotFoundError,
@@ -15,7 +16,12 @@ from app.domain.error import (
 load_dotenv()
 
 
-app = FastAPI()
+app = FastAPI(
+    title="ChainClip API",
+    description="複数動画をシーン分割・トリミングして1本の動画にまとめるChainClipのバックエンドAPI。",
+    version="0.1.0",
+    servers=[{"url": "http://localhost:8000", "description": "ローカル開発"}],
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -49,5 +55,15 @@ async def handle_invalid_clip(request: Request, exc: InvalidClipError) -> JSONRe
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
+@app.exception_handler(GcsObjectNotFoundError)
+async def handle_gcs_object_not_found(request: Request, exc: GcsObjectNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
 app.include_router(projects.router)
 app.include_router(clips.router)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}

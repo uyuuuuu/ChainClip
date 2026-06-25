@@ -67,17 +67,10 @@ def request_upload_urls(
             clip_id=clip.id,
             clip_index=clip.clip_index,
             upload_url=generate_signed_upload_url(
-                _object_key(clip),
+                clip.original_object_key(),
                 content_type=clip.content_type,
                 expires_in_seconds=UPLOAD_URL_EXPIRES_IN_SECONDS,
             ),
         )
         for clip in new_clips
     ]
-
-
-def _object_key(clip: Clip) -> str:
-    ext = ""
-    if "." in clip.original_filename:
-        ext = "." + clip.original_filename.rsplit(".", 1)[1].lower()
-    return f"original/{clip.project_id}/{clip.id}{ext}"
