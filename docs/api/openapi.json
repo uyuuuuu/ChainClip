@@ -9,6 +9,10 @@
     {
       "url": "http://localhost:8000",
       "description": "ローカル開発"
+    },
+    {
+      "url": "https://api.chainclip.peach-fi-zz.org",
+      "description": "本番"
     }
   ],
   "paths": {
