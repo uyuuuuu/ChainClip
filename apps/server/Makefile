@@ -1,5 +1,5 @@
-PYTHON := python
 VENV := .venv
+PYTHON := $(VENV)\Scripts\python.exe
 IMAGE := asia-northeast1-docker.pkg.dev/hmi2026/chainclip/api:latest
 SERVICE := chainclip-api
 REGION := asia-northeast1
@@ -15,6 +15,7 @@ run:
 install:
 	$(PYTHON) -m pip install -r requirements.txt
 
+# 手動でvenvを有効化したい時の案内(makeコマンド自体はvenvのpythonを直接指定するので有効化不要)
 activate:
 	@echo "$(VENV)\Scripts\activate"
 

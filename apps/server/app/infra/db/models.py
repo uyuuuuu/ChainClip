@@ -80,7 +80,7 @@ class ProjectClipModel(Base):
     __tablename__ = "project_clips"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     clip_index: Mapped[int] = mapped_column(Integer, nullable=False)
     original_filename: Mapped[str] = mapped_column(Text, nullable=False)
     content_type: Mapped[str | None] = mapped_column(Text)
@@ -97,8 +97,8 @@ class ProjectAssetModel(Base):
     __tablename__ = "project_assets"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
-    clip_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("project_clips.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    clip_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("project_clips.id", ondelete="CASCADE"))
     kind: Mapped[AssetKind] = mapped_column(asset_kind_enum, nullable=False)
     storage_provider: Mapped[StorageProvider] = mapped_column(storage_provider_enum, nullable=False)
     bucket: Mapped[str] = mapped_column(Text, nullable=False)
@@ -113,8 +113,8 @@ class ProcessingJobModel(Base):
     __tablename__ = "processing_jobs"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), nullable=False)
-    clip_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("project_clips.id"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    clip_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("project_clips.id", ondelete="CASCADE"))
     job_type: Mapped[JobType] = mapped_column(job_type_enum, nullable=False)
     status: Mapped[JobStatus] = mapped_column(job_status_enum, nullable=False, default=JobStatus.QUEUED)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
