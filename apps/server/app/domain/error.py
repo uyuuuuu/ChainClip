@@ -16,3 +16,7 @@ class InvalidProjectStateError(DomainError):
 
 class InvalidClipError(DomainError):
     """clipの入力データ(content_typeなど)が不正な場合。"""
+
+
+class GcsObjectNotFoundError(DomainError):
+    """GCS上に対象オブジェクトが存在しない場合。"""

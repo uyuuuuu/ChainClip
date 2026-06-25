@@ -26,6 +26,8 @@ class Clip:
     content_type: str | None = None
     size_bytes: int | None = None
     duration_ms: int | None = None
+    error_code: str | None = None
+    error_message: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -49,3 +51,33 @@ class Clip:
             content_type=content_type,
             size_bytes=size_bytes,
         )
+
+    def mark_processing(self) -> None:
+        """prepare workerが解析・変換を開始したら呼ぶ。"""
+        self.status = ClipStatus.PROCESSING
+
+    def mark_ready(self, *, duration_ms: int) -> None:
+        """解析・変換が完了したら呼ぶ。"""
+        self.status = ClipStatus.READY
+        self.duration_ms = duration_ms
+
+    def mark_failed(self, *, error_code: str, error_message: str) -> None:
+        """解析・変換に失敗したら呼ぶ。"""
+        self.status = ClipStatus.FAILED
+        self.error_code = error_code
+        self.error_message = error_message
+
+    def original_object_key(self) -> str:
+        """GCS上の元動画オブジェクトキー。"""
+        ext = ""
+        if "." in self.original_filename:
+            ext = "." + self.original_filename.rsplit(".", 1)[1].lower()
+        return f"original/{self.project_id}/{self.id}{ext}"
+
+    def converted_object_key(self) -> str:
+        """GCS上の変換後mp4オブジェクトキー。"""
+        return f"converted/{self.project_id}/{self.id}.mp4"
+
+    def scene_candidates_object_key(self) -> str:
+        """GCS上のシーン区間JSONオブジェクトキー。"""
+        return f"scenes/{self.project_id}/{self.id}.json"

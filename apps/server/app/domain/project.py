@@ -31,6 +31,9 @@ class Project:
     title: str | None = None
     description: str | None = None
     share_slug: str | None = None
+    error_phase: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -52,6 +55,21 @@ class Project:
     def mark_uploading(self) -> None:
         """clipのアップロードURLを発行したら呼ぶ。"""
         self.status = ProjectStatus.UPLOADING
+
+    def mark_preparing(self) -> None:
+        """全clipのアップロードが完了し、prepare workerを起動したら呼ぶ。"""
+        self.status = ProjectStatus.PREPARING
+
+    def mark_ready(self) -> None:
+        """全clipの解析・変換が完了したら呼ぶ。"""
+        self.status = ProjectStatus.READY
+
+    def mark_failed(self, *, error_phase: str, error_code: str, error_message: str) -> None:
+        """処理に失敗したら呼ぶ。"""
+        self.status = ProjectStatus.FAILED
+        self.error_phase = error_phase
+        self.error_code = error_code
+        self.error_message = error_message
 
     def assert_status(self, expected: ProjectStatus) -> None:
         """現在のstatusがexpectedでない場合はInvalidProjectStateErrorを投げる。"""
