@@ -52,6 +52,10 @@ class Clip:
             size_bytes=size_bytes,
         )
 
+    def mark_uploaded(self) -> None:
+        """モバイルからアップロード完了通知が来たら呼ぶ。"""
+        self.status = ClipStatus.UPLOADED
+
     def mark_processing(self) -> None:
         """prepare workerが解析・変換を開始したら呼ぶ。"""
         self.status = ClipStatus.PROCESSING

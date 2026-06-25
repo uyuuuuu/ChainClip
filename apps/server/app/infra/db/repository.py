@@ -102,6 +102,12 @@ class ClipRepo:
             clip.updated_at = model.updated_at
         return clips
 
+    def get_by_id(self, clip_id: uuid.UUID) -> Clip | None:
+        model = self.session.get(ProjectClipModel, clip_id)
+        if model is None:
+            return None
+        return _clip_from_model(model)
+
     def list_by_project_id(self, project_id: uuid.UUID) -> list[Clip]:
         models = (
             self.session.execute(

@@ -6,12 +6,30 @@ import os
 from pathlib import Path
 from typing import Any
 
+from google.auth.compute_engine import credentials as gce_credentials
+from google.auth.transport import requests as google_auth_requests
 from google.cloud import exceptions as gcs_exceptions
 from google.cloud import storage
 
 from app.domain.error import GcsObjectNotFoundError
 
 storage_client = storage.Client()
+
+
+def _signing_credentials() -> gce_credentials.IDTokenCredentials | None:
+    """Cloud Run/GCE上は秘密鍵を持たないため、IAM SignBlob経由で署名するcredentialsを作る。
+    ローカルのキーファイル認証の場合はNoneを返し、デフォルトの署名方法に任せる。"""
+    credentials = storage_client._credentials
+    if not isinstance(credentials, gce_credentials.Credentials):
+        return None
+
+    request = google_auth_requests.Request()
+    credentials.refresh(request)
+    return gce_credentials.IDTokenCredentials(
+        request,
+        "",
+        service_account_email=credentials.service_account_email,
+    )
 
 
 def generate_signed_upload_url(key: str, *, content_type: str, expires_in_seconds: int = 600) -> str:
@@ -25,7 +43,15 @@ def generate_signed_upload_url(key: str, *, content_type: str, expires_in_second
         expiration=datetime.timedelta(seconds=expires_in_seconds),
         method="PUT",
         content_type=content_type,
+        credentials=_signing_credentials(),
     )
+
+
+def object_exists(key: str) -> bool:
+    """GCS上に指定したキーのオブジェクトが存在するか確認する。"""
+    bucket_name = os.environ["GCS_BUCKET_NAME"]
+    bucket = storage_client.bucket(bucket_name)
+    return bucket.blob(key).exists()
 
 
 def download_file(key: str, destination: Path) -> None:

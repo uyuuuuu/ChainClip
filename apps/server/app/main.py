@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 from app.domain.error import (
     AccessDeniedError,
+    GcsObjectNotFoundError,
     InvalidClipError,
     InvalidProjectStateError,
     ProjectNotFoundError,
@@ -52,6 +53,11 @@ async def handle_invalid_project_state(request: Request, exc: InvalidProjectStat
 @app.exception_handler(InvalidClipError)
 async def handle_invalid_clip(request: Request, exc: InvalidClipError) -> JSONResponse:
     return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(GcsObjectNotFoundError)
+async def handle_gcs_object_not_found(request: Request, exc: GcsObjectNotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
 
 
 app.include_router(projects.router)

@@ -56,6 +56,10 @@ class Project:
         """clipのアップロードURLを発行したら呼ぶ。"""
         self.status = ProjectStatus.UPLOADING
 
+    def mark_uploaded(self) -> None:
+        """全clipのアップロードが完了したら呼ぶ。"""
+        self.status = ProjectStatus.UPLOADED
+
     def mark_preparing(self) -> None:
         """全clipのアップロードが完了し、prepare workerを起動したら呼ぶ。"""
         self.status = ProjectStatus.PREPARING

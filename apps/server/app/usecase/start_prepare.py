@@ -7,6 +7,7 @@ from app.domain.clip import ClipStatus
 from app.domain.error import InvalidProjectStateError, ProjectNotFoundError
 from app.domain.project import ProjectStatus
 from app.infra.db.repository import ClipRepo, ProjectRepo
+from app.infra.worker.cloud_run import trigger_prepare_job
 
 
 @dataclass
@@ -37,6 +38,6 @@ def start_prepare(
     project.mark_preparing()
     project_repo.update(project)
 
-    # TODO: Cloud Run Jobsのprepareジョブをここでトリガーする(Job未デプロイのため後で接続)
+    trigger_prepare_job(project.id)
 
     return PrepareResult(project_id=project.id, status=project.status.value)

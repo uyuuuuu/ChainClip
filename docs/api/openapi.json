@@ -166,6 +166,60 @@
         }
       }
     },
+    "/clips/{clip_id}/upload-complete": {
+      "put": {
+        "tags": [
+          "clips"
+        ],
+        "summary": "Complete Upload Endpoint",
+        "description": "project idを探してaccess_tokenを照合、clip単位でアップロード完了通知、GCS object存在確認、\nproject_clips.status=uploaded。",
+        "operationId": "complete_upload_endpoint_clips__clip_id__upload_complete_put",
+        "parameters": [
+          {
+            "name": "clip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Clip Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompleteUploadResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -237,6 +291,38 @@
           "uploadUrl"
         ],
         "title": "ClipUploadUrlResponse"
+      },
+      "CompleteUploadRequest": {
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "title": "Accesstoken"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accessToken"
+        ],
+        "title": "CompleteUploadRequest"
+      },
+      "CompleteUploadResponse": {
+        "properties": {
+          "clipId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Clipid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clipId",
+          "status"
+        ],
+        "title": "CompleteUploadResponse"
       },
       "CreateProjectRequest": {
         "properties": {
