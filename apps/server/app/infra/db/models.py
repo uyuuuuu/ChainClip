@@ -86,6 +86,8 @@ class ProjectClipModel(Base):
     content_type: Mapped[str | None] = mapped_column(Text)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger)
     duration_ms: Mapped[int | None] = mapped_column(Integer)
+    width: Mapped[int | None] = mapped_column(Integer)
+    height: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[ClipStatus] = mapped_column(clip_status_enum, nullable=False, default=ClipStatus.UPLOADING)
     error_code: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)

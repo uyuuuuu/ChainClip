@@ -4,6 +4,7 @@ import uuid
 from copy import deepcopy
 from datetime import datetime, timezone
 
+from app.domain.asset import ProjectAsset
 from app.domain.clip import Clip
 from app.domain.project import Project
 
@@ -61,3 +62,18 @@ class FakeClipRepo:
             raise ValueError(f"clip not found: {clip.id}")
         clip.updated_at = datetime.now(timezone.utc)
         self._clips[clip.id] = deepcopy(clip)
+
+
+class FakeAssetRepo:
+    """AssetRepoと同じインターフェースを持つ、DB不要のusecaseテスト用フェイク。"""
+
+    def __init__(self) -> None:
+        self._assets: dict[uuid.UUID, ProjectAsset] = {}
+
+    def create(self, asset: ProjectAsset) -> ProjectAsset:
+        asset.created_at = datetime.now(timezone.utc)
+        self._assets[asset.id] = deepcopy(asset)
+        return asset
+
+    def list_by_project_id(self, project_id: uuid.UUID) -> list[ProjectAsset]:
+        return [deepcopy(asset) for asset in self._assets.values() if asset.project_id == project_id]
