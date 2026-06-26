@@ -74,12 +74,14 @@ Table projects {
 
 Table project_clips {
   id uuid [pk, not null, default: `gen_random_uuid()`]
-  project_id uuid [not null, ref: > projects.id]
+  project_id uuid [not null, ref: > projects.id, delete: cascade]
   clip_index integer [not null, note: 'アップロード順']
   original_filename text [not null]
   content_type text [note: 'video/mp4, video/quicktime など']
   size_bytes bigint
-  duration_ms integer
+  duration_ms integer [note: '変換後動画の長さ。ffprobeで取得']
+  width integer [note: '変換後動画の幅。ffprobeで取得']
+  height integer [note: '変換後動画の高さ。ffprobeで取得']
   status clip_status [not null, default: 'uploading']
   error_code text
   error_message text
@@ -89,8 +91,8 @@ Table project_clips {
 
 Table project_assets {
   id uuid [pk, not null, default: `gen_random_uuid()`]
-  project_id uuid [not null, ref: > projects.id]
-  clip_id uuid [ref: > project_clips.id, note: 'クリップに紐づかない場合はNULL']
+  project_id uuid [not null, ref: > projects.id, delete: cascade]
+  clip_id uuid [ref: > project_clips.id, delete: cascade, note: 'クリップに紐づかない場合はNULL']
   kind asset_kind [not null]
   storage_provider storage_provider [not null]
   bucket text [not null]
@@ -103,8 +105,8 @@ Table project_assets {
 
 Table processing_jobs {
   id uuid [pk, not null, default: `gen_random_uuid()`]
-  project_id uuid [not null, ref: > projects.id]
-  clip_id uuid [ref: > project_clips.id, note: 'クリップ単位でない処理はNULL']
+  project_id uuid [not null, ref: > projects.id, delete: cascade]
+  clip_id uuid [ref: > project_clips.id, delete: cascade, note: 'クリップ単位でない処理はNULL']
   job_type job_type [not null]
   status job_status [not null, default: 'queued']
   attempt integer [not null, default: 1]

@@ -26,6 +26,8 @@ class Clip:
     content_type: str | None = None
     size_bytes: int | None = None
     duration_ms: int | None = None
+    width: int | None = None
+    height: int | None = None
     error_code: str | None = None
     error_message: str | None = None
     created_at: datetime | None = None
@@ -60,10 +62,12 @@ class Clip:
         """prepare workerが解析・変換を開始したら呼ぶ。"""
         self.status = ClipStatus.PROCESSING
 
-    def mark_ready(self, *, duration_ms: int) -> None:
+    def mark_ready(self, *, duration_ms: int, width: int, height: int) -> None:
         """解析・変換が完了したら呼ぶ。"""
         self.status = ClipStatus.READY
         self.duration_ms = duration_ms
+        self.width = width
+        self.height = height
 
     def mark_failed(self, *, error_code: str, error_message: str) -> None:
         """解析・変換に失敗したら呼ぶ。"""
