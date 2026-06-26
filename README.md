@@ -1,28 +1,5 @@
 # HMI2026
 
-## バックエンドディレクトリ構成
-
-```
-app/
-├─ domain/        ドメインエンティティ(Project, Clip, Asset, ProcessingJobなど)・値オブジェクト・ドメイン例外を
-├─ usecase/       エンドポイントごとの業務ロジック
-├─ infra/         DB・外部ストレージ・外部APIなど、外部リソースとのやり取り
-│  ├─ db/         DBモデル(SQLAlchemy)・セッション・リポジトリ実装
-│  ├─ storage/    動画ファイルの保存先とのやり取り
-│  ├─ video/      FFmpegによる動画変換やVideo Intelligence APIによる解析処理
-│  └─ worker/     Cloud Run Jobsの起動トリガーを実装する
-├─ api/           FastAPIのルーティングと依存性注入を置く
-│  └─ routes/     エンドポイント定義を置く
-└─ worker/        Cloud Run Jobsで動くprepare/render処理のエントリポイントを置く
-
-alembic/          DBマイグレーション
-
-tests/
-├─ fakes.py       usecase層テスト用、DB不要なフェイクrepository実装
-├─ usecase/       usecase層のテスト
-└─ infra/         repository層のテスト
-```
-
 ## 開発者向け
 
 以下は`apps\server`で実行する。
