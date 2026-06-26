@@ -83,13 +83,15 @@ def test_clip_repo_update_persists_status_and_duration(session: Session) -> None
         ]
     )[0]
 
-    clip.mark_ready(duration_ms=1234)
+    clip.mark_ready(duration_ms=1234, width=1080, height=1920)
     clip_repo.update(clip)
 
     fetched = clip_repo.get_by_id(clip.id)
     assert fetched is not None
     assert fetched.status == ClipStatus.READY
     assert fetched.duration_ms == 1234
+    assert fetched.width == 1080
+    assert fetched.height == 1920
 
 
 def test_asset_repo_create(session: Session) -> None:
@@ -109,6 +111,49 @@ def test_asset_repo_create(session: Session) -> None:
     )
 
     assert asset.created_at is not None
+
+
+def test_asset_repo_list_by_project_id(session: Session) -> None:
+    """同じclipに紐づくconverted_clip/scene_candidatesの2つのassetを両方取得できる。"""
+    project_repo = ProjectRepo(session)
+    clip_repo = ClipRepo(session)
+    asset_repo = AssetRepo(session)
+    project = project_repo.create(Project.create(device_id=uuid.uuid4()))
+    clip = clip_repo.create_many(
+        [
+            Clip.create(
+                project_id=project.id,
+                clip_index=0,
+                original_filename="a.mp4",
+                content_type="video/mp4",
+                size_bytes=10,
+            )
+        ]
+    )[0]
+
+    asset_repo.create(
+        ProjectAsset.create(
+            project_id=project.id,
+            clip_id=clip.id,
+            kind=AssetKind.CONVERTED_CLIP,
+            storage_provider=StorageProvider.GCS,
+            bucket="test-bucket",
+            object_key="converted/x.mp4",
+        )
+    )
+    asset_repo.create(
+        ProjectAsset.create(
+            project_id=project.id,
+            clip_id=clip.id,
+            kind=AssetKind.SCENE_CANDIDATES,
+            storage_provider=StorageProvider.GCS,
+            bucket="test-bucket",
+            object_key="scenes/x.json",
+        )
+    )
+
+    assets = asset_repo.list_by_project_id(project.id)
+    assert {asset.kind for asset in assets} == {AssetKind.CONVERTED_CLIP, AssetKind.SCENE_CANDIDATES}
 
 
 def test_processing_job_repo_create_and_update(session: Session) -> None:

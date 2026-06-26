@@ -112,6 +112,59 @@
         }
       }
     },
+    "/projects/{project_id}": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project Status Endpoint",
+        "description": "project.statusに応じて進捗・解析結果・エラー情報を返す。",
+        "operationId": "get_project_status_endpoint_projects__project_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "accessToken",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Accesstoken"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetProjectStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/clips/upload-urls": {
       "post": {
         "tags": [
@@ -296,6 +349,25 @@
         ],
         "title": "ClipUploadUrlResponse"
       },
+      "ClipVideoResponse": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expiresat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "expiresAt"
+        ],
+        "title": "ClipVideoResponse"
+      },
       "CompleteUploadRequest": {
         "properties": {
           "accessToken": {
@@ -366,6 +438,94 @@
         ],
         "title": "CreateProjectResponse"
       },
+      "GetProjectStatusResponse": {
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Projectid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "clipsTotal": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clipstotal"
+          },
+          "clipsReady": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clipsready"
+          },
+          "clips": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReadyClipResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clips"
+          },
+          "errorPhase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorphase"
+          },
+          "errorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errorcode"
+          },
+          "errorMessage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errormessage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "projectId",
+          "status"
+        ],
+        "title": "GetProjectStatusResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -378,6 +538,52 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "ReadyClipResponse": {
+        "properties": {
+          "clipId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Clipid"
+          },
+          "clipIndex": {
+            "type": "integer",
+            "title": "Clipindex"
+          },
+          "durationMs": {
+            "type": "integer",
+            "title": "Durationms"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "video": {
+            "$ref": "#/components/schemas/ClipVideoResponse"
+          },
+          "scenes": {
+            "items": {
+              "$ref": "#/components/schemas/SceneResponse"
+            },
+            "type": "array",
+            "title": "Scenes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clipId",
+          "clipIndex",
+          "durationMs",
+          "width",
+          "height",
+          "video",
+          "scenes"
+        ],
+        "title": "ReadyClipResponse"
       },
       "RequestUploadUrlsRequest": {
         "properties": {
@@ -399,6 +605,43 @@
           "clips"
         ],
         "title": "RequestUploadUrlsRequest"
+      },
+      "SceneResponse": {
+        "properties": {
+          "sceneId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Sceneid"
+          },
+          "sceneIndex": {
+            "type": "integer",
+            "title": "Sceneindex"
+          },
+          "startMs": {
+            "type": "integer",
+            "title": "Startms"
+          },
+          "endMs": {
+            "type": "integer",
+            "title": "Endms"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Labels"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sceneId",
+          "sceneIndex",
+          "startMs",
+          "endMs",
+          "labels"
+        ],
+        "title": "SceneResponse"
       },
       "StartPrepareRequest": {
         "properties": {
