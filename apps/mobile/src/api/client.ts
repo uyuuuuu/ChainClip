@@ -1,6 +1,6 @@
-import { getDeviceId, getAccessToken } from '../lib/storage';
+import { getDeviceId, getAccessToken } from '@/lib/storage';
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL!; // .envに設定済み想定
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
 type Options = RequestInit & { projectId?: string };
 
