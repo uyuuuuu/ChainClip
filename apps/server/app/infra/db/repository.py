@@ -60,12 +60,34 @@ class ProjectRepo:
             updated_at=model.updated_at,
         )
 
+    def get_by_share_slug(self, share_slug: str) -> Project | None:
+        model = self.session.execute(
+            select(ProjectModel).where(ProjectModel.share_slug == share_slug)
+        ).scalar_one_or_none()
+        if model is None:
+            return None
+        return Project(
+            id=model.id,
+            device_id=model.device_id,
+            status=model.status,
+            access_token=model.access_token,
+            title=model.title,
+            description=model.description,
+            share_slug=model.share_slug,
+            error_phase=model.error_phase,
+            error_code=model.error_code,
+            error_message=model.error_message,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+        )
+
     def update(self, project: Project) -> None:
         model = self.session.get(ProjectModel, project.id)
         if model is None:
             raise ValueError(f"project not found: {project.id}")
 
         model.status = project.status
+        model.share_slug = project.share_slug
         model.error_phase = project.error_phase
         model.error_code = project.error_code
         model.error_message = project.error_message

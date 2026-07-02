@@ -1,0 +1,21 @@
+{
+  "name": "chainclip-web",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/styles.css -o ./public/style.css --minify",
+    "dev": "npm run build:css && wrangler dev",
+    "deploy": "npm run build:css && wrangler deploy",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "hono": "^4.12.27"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "@tailwindcss/cli": "^4.3.2",
+    "tailwindcss": "^4.3.2",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.107.0"
+  }
+}
