@@ -47,6 +47,32 @@ def generate_signed_upload_url(key: str, *, content_type: str, expires_in_second
     )
 
 
+def generate_signed_download_url(key: str, *, expires_in_seconds: int = 3600) -> str:
+    """再生用に変換後mp4を取得するための signed URL(GET)を発行する。"""
+    bucket_name = os.environ["GCS_BUCKET_NAME"]
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(key)
+
+    return blob.generate_signed_url(
+        version="v4",
+        expiration=datetime.timedelta(seconds=expires_in_seconds),
+        method="GET",
+        credentials=_signing_credentials(),
+    )
+
+
+def read_json(key: str) -> dict[str, Any]:
+    """GCS上のJSONオブジェクトを読み込んで返す。"""
+    bucket_name = os.environ["GCS_BUCKET_NAME"]
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(key)
+
+    try:
+        return json.loads(blob.download_as_text())
+    except gcs_exceptions.NotFound as exc:
+        raise GcsObjectNotFoundError(f"gcs object not found: {key}") from exc
+
+
 def object_exists(key: str) -> bool:
     """GCS上に指定したキーのオブジェクトが存在するか確認する。"""
     bucket_name = os.environ["GCS_BUCKET_NAME"]

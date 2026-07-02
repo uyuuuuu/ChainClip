@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -35,17 +37,26 @@ def convert_to_mp4(input_path: Path, output_path: Path) -> None:
         raise FfmpegConversionError(result.stderr)
 
 
-def get_duration_ms(path: Path) -> int:
-    """ffprobeで動画の長さ(ミリ秒)を取得する。"""
+@dataclass
+class VideoProbe:
+    duration_ms: int
+    width: int
+    height: int
+
+
+def probe(path: Path) -> VideoProbe:
+    """ffprobeで動画の長さ(ミリ秒)・幅・高さを取得する。"""
     result = subprocess.run(
         [
             "ffprobe",
             "-v",
             "error",
+            "-select_streams",
+            "v:0",
             "-show_entries",
-            "format=duration",
+            "stream=width,height:format=duration",
             "-of",
-            "default=noprint_wrappers=1:nokey=1",
+            "json",
             str(path),
         ],
         capture_output=True,
@@ -53,4 +64,11 @@ def get_duration_ms(path: Path) -> int:
     )
     if result.returncode != 0:
         raise FfmpegConversionError(result.stderr)
-    return round(float(result.stdout.strip()) * 1000)
+
+    data = json.loads(result.stdout)
+    stream = data["streams"][0]
+    return VideoProbe(
+        duration_ms=round(float(data["format"]["duration"]) * 1000),
+        width=stream["width"],
+        height=stream["height"],
+    )

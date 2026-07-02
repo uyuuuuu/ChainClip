@@ -127,6 +127,8 @@ class ClipRepo:
 
         model.status = clip.status
         model.duration_ms = clip.duration_ms
+        model.width = clip.width
+        model.height = clip.height
         model.error_code = clip.error_code
         model.error_message = clip.error_message
         self.session.commit()
@@ -144,6 +146,8 @@ def _clip_from_model(model: ProjectClipModel) -> Clip:
         content_type=model.content_type,
         size_bytes=model.size_bytes,
         duration_ms=model.duration_ms,
+        width=model.width,
+        height=model.height,
         error_code=model.error_code,
         error_message=model.error_message,
         created_at=model.created_at,
@@ -176,6 +180,31 @@ class AssetRepo:
 
         asset.created_at = model.created_at
         return asset
+
+    def list_by_project_id(self, project_id: uuid.UUID) -> list[ProjectAsset]:
+        models = (
+            self.session.execute(
+                select(ProjectAssetModel).where(ProjectAssetModel.project_id == project_id)
+            )
+            .scalars()
+            .all()
+        )
+        return [
+            ProjectAsset(
+                id=model.id,
+                project_id=model.project_id,
+                clip_id=model.clip_id,
+                kind=model.kind,
+                storage_provider=model.storage_provider,
+                bucket=model.bucket,
+                object_key=model.object_key,
+                public_url=model.public_url,
+                content_type=model.content_type,
+                size_bytes=model.size_bytes,
+                created_at=model.created_at,
+            )
+            for model in models
+        ]
 
 
 class ProcessingJobRepo:

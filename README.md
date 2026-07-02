@@ -1,20 +1,5 @@
 # HMI2026
 
-## バックエンドディレクトリ構成
-
-```
-app/
-├─ domain/        ドメインエンティティ(Project, Clipなど)・値オブジェクト・ドメイン例外を置く
-├─ usecase/       エンドポイントごとの業務ロジック(ユースケース)を置く
-├─ infra/         DB・外部ストレージ・外部APIなど、外部リソースとのやり取りを実装する
-│  ├─ db/         DBモデル(SQLAlchemy)とリポジトリ実装を置く
-│  ├─ storage/    GCS/R2など動画ファイルの保存先とのやり取りを実装する
-│  └─ video/      FFmpegによる動画変換やVideo Intelligence APIによる解析処理を実装する
-├─ api/           FastAPIのルーティングと依存性注入を置く
-│  └─ routes/     エンドポイント定義を置く
-└─ worker/        Cloud Run Jobsで動くprepare/render処理のエントリポイントと共通処理を置く
-```
-
 ## 開発者向け
 
 以下は`apps\server`で実行する。
@@ -37,6 +22,26 @@ make run
 
 ```
 make freeze   # 現在のvenvの状態をrequirements.txtに反映
+```
+
+### テスト
+
+```
+make install-dev   # pytestなどテスト用パッケージをインストール(初回のみ)
+```
+
+usecase層のみ(フェイクrepoを使うのでDB不要、高速):
+
+```
+make test-unit
+```
+
+repository層も含めた全テスト(ローカルPostgresが必要):
+
+```
+make test-db-up    # docker composeでテスト用postgresを起動(初回はimage取得が入る)
+make test          # usecase層+repository層を実行
+make test-db-down  # 不要になったらテスト用postgresを停止
 ```
 
 ### DBマイグレーション(Alembic)

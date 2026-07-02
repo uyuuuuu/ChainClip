@@ -80,7 +80,7 @@ def _prepare_clip(clip_repo: ClipRepo, asset_repo: AssetRepo, clip: Clip) -> Non
 
             gcs.download_file(clip.original_object_key(), original_path)
             ffmpeg.convert_to_mp4(original_path, converted_path)
-            duration_ms = ffmpeg.get_duration_ms(converted_path)
+            probe = ffmpeg.probe(converted_path)
 
             converted_key = gcs.upload_file(
                 clip.converted_object_key(),
@@ -106,7 +106,7 @@ def _prepare_clip(clip_repo: ClipRepo, asset_repo: AssetRepo, clip: Clip) -> Non
                 {
                     "clipId": str(clip.id),
                     "scenes": [
-                        {"startMs": 0, "endMs": duration_ms, "labels": ["dummy"]},
+                        {"startMs": 0, "endMs": probe.duration_ms, "labels": ["dummy"]},
                     ],
                 },
             )
@@ -122,7 +122,7 @@ def _prepare_clip(clip_repo: ClipRepo, asset_repo: AssetRepo, clip: Clip) -> Non
                 )
             )
 
-        clip.mark_ready(duration_ms=duration_ms)
+        clip.mark_ready(duration_ms=probe.duration_ms, width=probe.width, height=probe.height)
         clip_repo.update(clip)
     except ffmpeg.FfmpegConversionError as exc:
         clip.mark_failed(error_code="FFMPEG_FAILED", error_message=str(exc))

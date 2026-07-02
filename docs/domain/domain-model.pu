@@ -73,14 +73,14 @@ class "クリップ" as Clip {
   ...
 }
 
-class "プロジェクトアセット" as ProjectAsset <<未実装: infra/db/models.pyのみ>> {
+class "プロジェクトアセット" as ProjectAsset {
   id: UUID
   種別: アセット種別
   保存先: 保存先プロバイダ
   ...
 }
 
-class "処理ジョブ" as ProcessingJob <<未実装: infra/db/models.pyのみ>> {
+class "処理ジョブ" as ProcessingJob {
   id: UUID
   種別: ジョブ種別
   状態: ジョブ状態
@@ -167,7 +167,8 @@ note right of Clip
   <b>クリップ</b>
   - 1プロジェクトに対して複数行(=複数の元動画)を持つ。並び順は
     アップロード順であり、最終動画生成時の初期並び順としても使える。
-  - 動画時間は「変換後動画」の長さ。元動画(original_clip)の長さではない点に注意。
+  - 動画時間・幅・高さは「変換後動画」の値。元動画(original_clip)の値ではない点に注意。
+    いずれもprepare workerがffprobeで取得し、準備完了にする(...)で設定する。
 end note
 
 note bottom of Scene

@@ -20,7 +20,10 @@ app = FastAPI(
     title="ChainClip API",
     description="複数動画をシーン分割・トリミングして1本の動画にまとめるChainClipのバックエンドAPI。",
     version="0.1.0",
-    servers=[{"url": "http://localhost:8000", "description": "ローカル開発"}],
+    servers=[
+        {"url": "http://localhost:8000", "description": "ローカル開発"},
+        {"url": "https://api.chainclip.peach-fi-zz.org", "description": "本番"},
+    ],
 )
 
 app.add_middleware(

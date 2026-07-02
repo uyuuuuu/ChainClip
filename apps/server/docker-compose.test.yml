@@ -1,0 +1,9 @@
+services:
+  test-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: chainclip_test
+    ports:
+      - "5433:5432"
