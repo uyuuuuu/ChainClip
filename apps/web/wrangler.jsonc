@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "chainclip-web",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./public",
+  },
+  "vars": {
+    "API_BASE_URL": "https://api.chainclip.peach-fi-zz.org",
+  },
+  "observability": {
+    "logs": {
+      "enabled": false,
+      "invocation_logs": true,
+    },
+  },
+}

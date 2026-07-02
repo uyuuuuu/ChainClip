@@ -25,6 +25,12 @@ class FakeProjectRepo:
         project = self._projects.get(project_id)
         return deepcopy(project) if project is not None else None
 
+    def get_by_share_slug(self, share_slug: str) -> Project | None:
+        for project in self._projects.values():
+            if project.share_slug == share_slug:
+                return deepcopy(project)
+        return None
+
     def update(self, project: Project) -> None:
         if project.id not in self._projects:
             raise ValueError(f"project not found: {project.id}")
