@@ -20,7 +20,7 @@ class Scene:
     start_ms: int
     end_ms: int
     labels: list[str]
-    boundary_scores: float | None = None
+    boundary_score: float | None = None
     
     
 #解析本体

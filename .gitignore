@@ -6,3 +6,10 @@ temp/
 .env
 .env.*
 CLAUDE.md
+
+# ── 実データ・生成物・キャッシュ ───────────────────
+temp/
+out/
+*.mp4
+*.mov
+*_cache.json           # VI API のキャッシュ（fixtures/intel_cache.json 等）
