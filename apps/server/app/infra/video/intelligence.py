@@ -6,6 +6,9 @@ import os
 # domain の入力DTOだけに依存する
 from app.domain.detection import LabelFrame, LabelTrack
 
+class VideoIntelligenceError(Exception):
+    """VI API 呼び出しに失敗したときの例外"""
+
 def _offset_to_ms(offset) -> int:
     if isinstance(offset, str):
         return int(round(float(offset.rstrip("s") or 0) * 1000))
