@@ -15,6 +15,11 @@ type ShareApiResponse = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+app.use("*", async (c, next) => {
+  await next();
+  c.res.headers.set("X-Robots-Tag", "noindex, nofollow");
+});
+
 app.get("/", (c) => c.text("ChainClip"));
 
 app.get("/s/:shareSlug", async (c) => {

@@ -20,6 +20,7 @@ export function SharePage({ title, description, videoUrl, downloadUrl, pageUrl }
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{pageTitle} - ChainClip</title>
+        <meta name="robots" content="noindex, nofollow" />
         <meta name="description" content={pageDescription} />
 
         <meta property="og:type" content="video.other" />

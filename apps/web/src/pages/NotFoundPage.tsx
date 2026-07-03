@@ -7,6 +7,7 @@ export function NotFoundPage() {
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>見つかりません - ChainClip</title>
+        <meta name="robots" content="noindex, nofollow" />
         <ViteClient />
         <Link href="/src/styles.css" rel="stylesheet" />
       </head>
