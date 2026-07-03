@@ -277,6 +277,49 @@
         }
       }
     },
+    "/share/{share_slug}": {
+      "get": {
+        "tags": [
+          "share"
+        ],
+        "summary": "Get Share Page Endpoint",
+        "description": "認証不要で完成動画の共有閲覧情報を返す。",
+        "operationId": "get_share_page_endpoint_share__share_slug__get",
+        "parameters": [
+          {
+            "name": "share_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Share Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharePageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -642,6 +685,49 @@
           "labels"
         ],
         "title": "SceneResponse"
+      },
+      "SharePageResponse": {
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Projectid"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "videoUrl": {
+            "type": "string",
+            "title": "Videourl"
+          }
+        },
+        "type": "object",
+        "required": [
+          "projectId",
+          "title",
+          "description",
+          "videoUrl"
+        ],
+        "title": "SharePageResponse"
       },
       "StartPrepareRequest": {
         "properties": {

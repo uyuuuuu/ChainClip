@@ -7,7 +7,7 @@
     "skipLibCheck": true,
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
-    "types": ["@cloudflare/workers-types"]
+    "types": ["vite/client", "@cloudflare/workers-types"]
   },
   "include": ["src"]
 }

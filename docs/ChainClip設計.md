@@ -365,13 +365,14 @@ Cloud Run Jobsで実行したworkerの履歴を管理する。
 \- rendering中は処理状態を返す  
 \- completedならshareUrl / finalVideoUrlを返す
 
-▌GET /public/projects/{shareSlug}  
+▌GET /share/{shareSlug}✅  
 \- 共有URLから完成動画情報を取得する公開API  
 \- access_tokenは要求しない  
 \- projects.share_slugでprojectを検索する  
-\- projects.statusがcompletedでない場合は404を返す  
+\- projects.statusがcompletedでない場合は404を返す（未完成であることを外部に漏らさないため）  
 \- project_assets.kind \= final_clip のpublic_urlを返す  
-\- title, description, finalVideoUrl, downloadUrlを返す
+\- projectId, title, description, videoUrlを返す  
+\- ダウンロード用URLはこのAPIでは返さない。apps/web側が `/s/{shareSlug}/download` で動画をサーバーサイドfetchし、Content-Dispositionを付けて返す
 
 ▌DELETE /projects/{projectId}  
 \- UIは未決定。アプリ側に過去の作成プロジェクト一覧を持たせ、削除ボタンと共有リンク(ブラウザに飛ぶ)があるイメージ。  
