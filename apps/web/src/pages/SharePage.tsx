@@ -1,3 +1,5 @@
+import { Link, ViteClient } from "vite-ssr-components/hono";
+
 type SharePageProps = {
   title: string | null;
   description: string | null;
@@ -30,7 +32,8 @@ export function SharePage({ title, description, videoUrl, downloadUrl, pageUrl }
         <meta name="twitter:title" content={pageTitle} />
         <meta name="twitter:description" content={pageDescription} />
 
-        <link rel="stylesheet" href="/style.css" />
+        <ViteClient />
+        <Link href="/src/styles.css" rel="stylesheet" />
       </head>
       <body class="m-0 min-h-dvh bg-white text-neutral-900 font-sans">
         <main class="flex min-h-dvh flex-col items-center justify-center gap-4 px-4 py-6">

@@ -1,16 +1,17 @@
-.PHONY: install build dev login deploy
+.PHONY: install dev build login deploy
 
 install:
 	npm install
 
+dev:
+	npm run dev
+
 build:
-	npm run build:css
+	npm run build
 
-dev: build
-	npx wrangler dev
-
+# 初回のみ。ブラウザでCloudflareアカウント認証
 login:
 	npx wrangler login
 
-deploy: build
-	npx wrangler deploy
+deploy:
+	npm run deploy
