@@ -33,7 +33,11 @@ export default function CreateScreen() {
             <Text>"プロジェクト作成ボタン"</Text>}
           {createProject.isPending && <Text>作成中...</Text>}
           {createProject.isSuccess && <Text>OK: {createProject.data.projectId}</Text>}
-          {createProject.isError && <Text>失敗: {String(createProject.error)}</Text>}
+          {createProject.isError && (
+            <Text style={{ fontSize: 10 }}>
+              失敗: {String(createProject.error)}
+            </Text>
+          )}
         </Button>
       </View>
     </View>

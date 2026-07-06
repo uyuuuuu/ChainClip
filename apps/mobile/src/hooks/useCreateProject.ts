@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { apiFetch } from '../api/client';
-import { saveAccessToken } from '../lib/storage';
+import { getDeviceId, saveAccessToken } from '../lib/storage';
 
 type CreateProjectResponse = {
   projectId: string;
@@ -10,12 +10,15 @@ type CreateProjectResponse = {
 
 export function useCreateProject() {
   return useMutation({
-    mutationFn: async (input: { aspectRatio: string }) => {
+    mutationFn: async () => {
+      // 端末IDを取得(なければ生成)して、ボディに含める
+      const deviceId = await getDeviceId();
+
       const data = await apiFetch<CreateProjectResponse>('/projects', {
         method: 'POST',
-        body: JSON.stringify(input),
+        body: JSON.stringify({ deviceId }),
       });
-      await saveAccessToken(data.projectId, data.accessToken); // tokenを保管
+      await saveAccessToken(data.projectId, data.accessToken);
       return data;
     },
   });
