@@ -73,7 +73,6 @@ class ProjectModel(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
-    completed_at: Mapped[datetime | None] = mapped_column()
 
 
 class ProjectClipModel(Base):

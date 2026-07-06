@@ -4,3 +4,8 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+# Native build artifacts
+ios/
+
+.DS_Store

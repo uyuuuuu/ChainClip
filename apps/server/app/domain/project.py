@@ -68,6 +68,12 @@ class Project:
         """全clipの解析・変換が完了したら呼ぶ。"""
         self.status = ProjectStatus.READY
 
+    def mark_completed(self) -> None:
+        """完成動画の生成が完了したら呼ぶ。share_slugが未発行なら新規発行する。"""
+        self.status = ProjectStatus.COMPLETED
+        if self.share_slug is None:
+            self.share_slug = secrets.token_urlsafe(8)
+
     def mark_failed(self, *, error_phase: str, error_code: str, error_message: str) -> None:
         """処理に失敗したら呼ぶ。"""
         self.status = ProjectStatus.FAILED

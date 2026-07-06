@@ -28,8 +28,17 @@ export default function CreateScreen() {
       {/* プロジェクト生成ボタン */}
       {/* <View className="w-full gap-3">
         <Button
-          variant="outline">
-            <Text>"プロジェクト作成ボタン"</Text>
+          variant="outline"
+          onPress={() => createProject.mutate({ aspectRatio: '9:16' })}>
+          {!createProject.isPending && !createProject.isSuccess && !createProject.isError &&
+            <Text>"プロジェクト作成ボタン"</Text>}
+          {createProject.isPending && <Text>作成中...</Text>}
+          {createProject.isSuccess && <Text>OK: {createProject.data.projectId}</Text>}
+          {createProject.isError && (
+            <Text style={{ fontSize: 10 }}>
+              失敗: {String(createProject.error)}
+            </Text>
+          )}
         </Button>
       </View> */}
       </ScrollView>
