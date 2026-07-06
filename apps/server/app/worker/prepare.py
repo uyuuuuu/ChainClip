@@ -14,6 +14,8 @@ from app.infra.db.repository import AssetRepo, ClipRepo, ProcessingJobRepo, Proj
 from app.infra.db.session import SessionLocal
 from app.infra.storage import gcs
 from app.infra.video import ffmpeg
+from app.domain import detection
+from app.infra.video import intelligence
 
 GCS_BUCKET_NAME = "GCS_BUCKET_NAME"
 
@@ -100,16 +102,29 @@ def _prepare_clip(clip_repo: ClipRepo, asset_repo: AssetRepo, clip: Clip) -> Non
                 )
             )
 
-            # TODO: ダミーのシーン区間のため置き換え
+            # 変換後mp4を Video Intelligence API で解析し、シーン区間を検出する。
+            # 解析対象は変換後mp4のGCS URI（startMs/endMsを変換後mp4基準にするため）。
+            converted_uri = f"gs://{bucket_name}/{converted_key}"
+            tracks = intelligence.fetch_labels(gcs_uri=converted_uri)
+            scenes = detection.detect_scenes(tracks, duration_ms=probe.duration_ms)
+ 
+            # get_project_status.py が読むのは startMs / endMs / labels のみ。
+            # sceneId は読み出し側で採番、sceneIndex は enumerate で採番するため含めない。
             scene_candidates_key = gcs.upload_json(
                 clip.scene_candidates_object_key(),
                 {
                     "clipId": str(clip.id),
                     "scenes": [
-                        {"startMs": 0, "endMs": probe.duration_ms, "labels": ["dummy"]},
+                        {
+                            "startMs": s.start_ms,
+                            "endMs": s.end_ms,
+                            "labels": s.labels,
+                        }
+                        for s in scenes
                     ],
                 },
             )
+
             asset_repo.create(
                 ProjectAsset.create(
                     project_id=clip.project_id,

@@ -6,4 +6,10 @@ temp/
 .env
 .env.*
 CLAUDE.md
-.DS_Store
+
+# ── 実データ・生成物・キャッシュ ───────────────────
+temp/
+out/
+*.mp4
+*.mov
+*_cache.json           # VI API のキャッシュ（fixtures/intel_cache.json 等）

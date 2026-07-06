@@ -1,4 +1,4 @@
-from app.api.routes import clips, projects
+from app.api.routes import clips, projects, share
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
@@ -65,6 +65,7 @@ async def handle_gcs_object_not_found(request: Request, exc: GcsObjectNotFoundEr
 
 app.include_router(projects.router)
 app.include_router(clips.router)
+app.include_router(share.router)
 
 
 @app.get("/health")
