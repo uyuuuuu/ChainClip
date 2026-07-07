@@ -1,7 +1,7 @@
-import { View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
+import { router, useLocalSearchParams } from 'expo-router';
+import { View } from 'react-native';
 
 export default function ScenesScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -25,14 +25,14 @@ export default function ScenesScreen() {
                     <Text>出力設定へ</Text>
                 </Button>
 
-                <Button
+                {/* <Button
                     variant="outline"
                     onPress={() => router.push({
                         pathname: '/project/[id]/cut/[cutId]',
                         params: { id, cutId: 'cut1' },
                     })}>
                     <Text>編集（カット編集）へ</Text>
-                </Button>
+                </Button> */}
 
                 <Button
                     variant="outline"

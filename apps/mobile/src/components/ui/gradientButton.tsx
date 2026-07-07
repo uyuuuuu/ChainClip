@@ -1,22 +1,33 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { Pressable, Text } from "react-native";
+import { Pressable, StyleProp, Text, TextStyle, ViewStyle } from "react-native";
 
 export function GradientButton({
   label,
   onPress,
+  style,       // ボタン全体（入れ物）のスタイル
+  textStyle,   // 文字のスタイル
 }: {
   label: string;
   onPress: () => void;
+  style?: StyleProp<ViewStyle>;      // ? は「渡さなくてもOK」の意味
+  textStyle?: StyleProp<TextStyle>;
 }) {
   return (
-    <Pressable onPress={onPress}>
+    <Pressable onPress={onPress} style={style}>
       <LinearGradient
-        colors={["#00C7F0", "#00D8E6"]}  // 左の色 → 右の色
-        start={{ x: 0, y: 0 }}            // グラデーションの開始位置（左上）
-        end={{ x: 1, y: 1 }}              // 終了位置（右下）＝横方向のグラデーション
-        className="rounded-md px-6 py-3 items-center"
+        colors={["#00D5FF", "#00E6E6"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          borderRadius: 6,
+          paddingHorizontal: 24,
+          paddingVertical: 12,
+          alignItems: "center",
+        }}
       >
-        <Text className="text-white font-bold">{label}</Text>
+        <Text style={[{ color: "white", fontWeight: "bold" }, textStyle]}>
+          {label}
+        </Text>
       </LinearGradient>
     </Pressable>
   );
