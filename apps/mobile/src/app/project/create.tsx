@@ -4,11 +4,19 @@ import { Progress } from "@/components/ui/progress";
 import { Text } from '@/components/ui/text';
 import { useCreateProject } from '@/hooks/useCreateProject';
 import { router } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
 // 画面状態（アップロード前、アップロード後、解析中、解析完了(いらないかも)、解析失敗）
 type ClipStatus = 'uploading' | 'uploaded' | 'processing' | 'ready' | 'failed';
+
+type PickedVideo = {
+  videoUri: string;      // 動画本体の端末内URI(後のアップロードで使う)
+  thumbnailUri: string;  // 生成したサムネ画像のURI(表示で使う)
+  durationMs: number;
+};
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import logo from "../../../assets/images/chainclip_logo.png";
@@ -18,6 +26,8 @@ import img3 from "../../../assets/images/sample3.jpg";
 import img4 from "../../../assets/images/sample4.jpg";
 
 export default function CreateScreen() {
+// アップロードした動画
+  const [videos, setVideos] = useState<PickedVideo[]>([]);
   // 画面進行状態
   const [status, setStatus] = useState<ClipStatus>('uploading');
   // 解析進捗
@@ -34,6 +44,38 @@ export default function CreateScreen() {
   ]);
   // プロジェクト作成
   const createProject = useCreateProject();
+    
+    // 端末から動画のアップロード
+    async function pickVideos() {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        allowsMultipleSelection: true,
+      });
+      if (result.canceled) return;
+
+    // 選ばれた動画それぞれについてサムネを生成する
+    const picked: PickedVideo[] = [];
+    for (const asset of result.assets) {
+      try {
+        const { uri: thumbnailUri } = await VideoThumbnails.getThumbnailAsync(
+          asset.uri,
+          { time: 0, quality: 0.7 }
+        );
+        picked.push({
+          videoUri: asset.uri,
+          thumbnailUri,
+          durationMs: asset.duration ?? 0,
+          fileName: asset.fileName ?? 'unknown.mov',
+        });
+      } catch (e) {
+        console.warn('サムネ生成に失敗:', asset.fileName, e);
+        // 失敗した動画はスキップ(または代替画像を入れる)
+      }
+    }
+    // すでに選んでいた分に追加する形にする(+ボタンで追加選択できるように)
+    setVideos((prev) => [...prev, ...picked]);
+  }
+
   // アップロード取り消し
   const removeThumbnail = (id: string) => {
     const updated = thumbnails.filter((t) => t.id !== id);
@@ -79,7 +121,7 @@ export default function CreateScreen() {
             </Text>
             {/* 動画アップロードボタン */}
             <Button className="py-16 self-center px-4 gap-1 flex flex-col justify-center items-center"
-              onPress={() => setStatus('uploaded')}>
+              onPress={pickVideos}>
               <MaterialCommunityIcons name="upload" size={68} color="white" />
               <Text className="text-lg">動画をアップロード</Text>
             </Button>
@@ -129,10 +171,31 @@ export default function CreateScreen() {
             ))}
             <Pressable
               className="w-[44%] h-36 mb-8 items-center justify-center border-2 bg-gray-100 border-dotted border-gray-600"
-              onPress={() => {/* 動画追加の処理 */ }}
+              onPress={pickVideos}
             >
               <MaterialCommunityIcons name="plus-circle" size={56} color="#4b5563" />
             </Pressable>
+//            ここまで仮
+            <FlatList
+        data={videos}
+            numColumns={2}
+        keyExtractor={(item) => item.videoUri}
+          renderItem={({ item }) => (
+            <Image
+          source={{ uri: item.thumbnailUri }}
+        className="w-40 h-40 m-2 rounded-lg"
+    />
+    )}
+                                                                  // 末尾に「+」ボタンを付ける
+                                                                  ListFooterComponent={
+                                                                    <Pressable
+                                                                      onPress={pickVideos}
+                                                                      className="w-40 h-40 m-2 rounded-lg bg-gray-200 items-center justify-center"
+                                                                    >
+                                                                      <Text className="text-3xl">＋</Text>
+                                                                    </Pressable>
+                                                                  }
+                                                                />
           </View>
         )}
 
