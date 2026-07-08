@@ -3,8 +3,8 @@ import { GradientButton } from '@/components/ui/gradientButton';
 import { Progress } from "@/components/ui/progress";
 import { Text } from '@/components/ui/text';
 import { useCreateProject } from '@/hooks/useCreateProject';
-import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { router } from 'expo-router';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, View } from 'react-native';
@@ -13,48 +13,38 @@ import { SafeAreaView } from "react-native-safe-area-context";
 type ClipStatus = 'uploading' | 'uploaded' | 'processing' | 'ready' | 'failed';
 
 type PickedVideo = {
-  videoUri: string;      // 動画本体の端末内URI(後のアップロードで使う)
-  thumbnailUri: string;  // 生成したサムネ画像のURI(表示で使う)
+  videoUri: string;      // 動画本体の端末内URI
+  thumbnailUri: string;  // 生成したサムネ画像のURI
   durationMs: number;
+  fileName: string;
 };
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import logo from "../../../assets/images/chainclip_logo.png";
-import img1 from "../../../assets/images/sample1.jpg";
-import img2 from "../../../assets/images/sample2.jpg";
-import img3 from "../../../assets/images/sample3.jpg";
-import img4 from "../../../assets/images/sample4.jpg";
 
 export default function CreateScreen() {
-// アップロードした動画
+  // アップロードした動画
   const [videos, setVideos] = useState<PickedVideo[]>([]);
   // 画面進行状態
   const [status, setStatus] = useState<ClipStatus>('uploading');
   // 解析進捗
   const [progress, setProgress] = useState(0);
-  // アップロード動画のサムネ一覧
-  const [thumbnails, setThumbnails] = useState([
-    { id: 'a', source: img1 },
-    { id: 'b', source: img2 },
-    { id: 'c', source: img3 },
-    { id: 'd', source: img4 },
-    { id: 'e', source: img1 },
-    { id: 'f', source: img2 },
-    { id: 'g', source: img3 },
-  ]);
+
   // プロジェクト作成
   const createProject = useCreateProject();
-    
-    // 端末から動画のアップロード
-    async function pickVideos() {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['videos'],
-        allowsMultipleSelection: true,
-      });
-      if (result.canceled) return;
 
-    // 選ばれた動画それぞれについてサムネを生成する
+  // 端末から動画のアップロード
+  async function pickVideos() {
+    // 端末の写真ライブラリを開く
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'], // ビデオのみ選択可
+      allowsMultipleSelection: true,
+    });
+    if (result.canceled) return; // 選択をキャンセルした場合
+
+    // 動画データの配列
     const picked: PickedVideo[] = [];
+    // サムネ生成
     for (const asset of result.assets) {
       try {
         const { uri: thumbnailUri } = await VideoThumbnails.getThumbnailAsync(
@@ -69,17 +59,16 @@ export default function CreateScreen() {
         });
       } catch (e) {
         console.warn('サムネ生成に失敗:', asset.fileName, e);
-        // 失敗した動画はスキップ(または代替画像を入れる)
       }
     }
-    // すでに選んでいた分に追加する形にする(+ボタンで追加選択できるように)
+    // アップロード一覧に追加
     setVideos((prev) => [...prev, ...picked]);
   }
 
   // アップロード取り消し
-  const removeThumbnail = (id: string) => {
-    const updated = thumbnails.filter((t) => t.id !== id);
-    setThumbnails(updated);
+  const removeVideo = (videoUri: string) => {
+    const updated = videos.filter((v) => v.videoUri !== videoUri);
+    setVideos(updated);
     // もしアップロード動画が0になったらアップロード画面に変える
     if (updated.length === 0) setStatus('uploading');
   };
@@ -145,23 +134,23 @@ export default function CreateScreen() {
         }
 
         {/* アップロード後 */}
-        {(status === 'uploaded' || status === 'processing') && (
+        {((status === 'uploaded' || status === 'processing') && videos.length !== 0) && (
           <View className="w-full flex-row flex-wrap justify-between pt-4">
-            {thumbnails.map((t) => (
+            {videos.map((v) => (
               <View
-                key={t.id}
+                key={v.videoUri}
                 className="relative w-[44%] h-36 mb-8 items-center justify-center"
               >
                 {/* 画像 */}
                 <Image
-                  source={t.source}
+                  source={{ uri: v.thumbnailUri }}
                   style={{ width: '100%', height: '100%' }}
                   resizeMode="cover" // containだとサムネ全体が表示される
                 />
                 {/* 削除ボタン */}
                 <Pressable
                   className="absolute -top-4 -right-4 flex justify-center items-center"
-                  onPress={() => removeThumbnail(t.id)}
+                  onPress={() => removeVideo(v.videoUri)}
                   hitSlop={10}
                 >
                   <View className="absolute top-[6px] left-[6px] w-[24px] h-[24px] bg-white rounded-full" />
@@ -175,27 +164,6 @@ export default function CreateScreen() {
             >
               <MaterialCommunityIcons name="plus-circle" size={56} color="#4b5563" />
             </Pressable>
-//            ここまで仮
-            <FlatList
-        data={videos}
-            numColumns={2}
-        keyExtractor={(item) => item.videoUri}
-          renderItem={({ item }) => (
-            <Image
-          source={{ uri: item.thumbnailUri }}
-        className="w-40 h-40 m-2 rounded-lg"
-    />
-    )}
-                                                                  // 末尾に「+」ボタンを付ける
-                                                                  ListFooterComponent={
-                                                                    <Pressable
-                                                                      onPress={pickVideos}
-                                                                      className="w-40 h-40 m-2 rounded-lg bg-gray-200 items-center justify-center"
-                                                                    >
-                                                                      <Text className="text-3xl">＋</Text>
-                                                                    </Pressable>
-                                                                  }
-                                                                />
           </View>
         )}
 
