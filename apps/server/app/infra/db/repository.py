@@ -52,6 +52,7 @@ class ProjectRepo:
             access_token=model.access_token,
             title=model.title,
             description=model.description,
+            edit_config=model.edit_config,
             share_slug=model.share_slug,
             error_phase=model.error_phase,
             error_code=model.error_code,
@@ -73,6 +74,7 @@ class ProjectRepo:
             access_token=model.access_token,
             title=model.title,
             description=model.description,
+            edit_config=model.edit_config,
             share_slug=model.share_slug,
             error_phase=model.error_phase,
             error_code=model.error_code,
@@ -86,6 +88,9 @@ class ProjectRepo:
         if model is None:
             raise ValueError(f"project not found: {project.id}")
 
+        model.title = project.title
+        model.description = project.description
+        model.edit_config = project.edit_config
         model.status = project.status
         model.share_slug = project.share_slug
         model.error_phase = project.error_phase
