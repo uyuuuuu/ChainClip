@@ -6,6 +6,7 @@ temp/
 .env
 .env.*
 CLAUDE.md
+.DS_Store
 
 # ── 実データ・生成物・キャッシュ ───────────────────
 temp/
