@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from app.domain.error import AccessDeniedError, InvalidProjectStateError
 
@@ -30,6 +31,7 @@ class Project:
     access_token: str
     title: str | None = None
     description: str | None = None
+    edit_config: dict[str, Any] | None = None
     share_slug: str | None = None
     error_phase: str | None = None
     error_code: str | None = None
@@ -67,6 +69,15 @@ class Project:
     def mark_ready(self) -> None:
         """全clipの解析・変換が完了したら呼ぶ。"""
         self.status = ProjectStatus.READY
+
+    def mark_rendering(
+        self, *, title: str | None, description: str | None, edit_config: dict[str, Any]
+    ) -> None:
+        """編集設定を保存し、render workerを起動したら呼ぶ。"""
+        self.title = title
+        self.description = description
+        self.edit_config = edit_config
+        self.status = ProjectStatus.RENDERING
 
     def mark_completed(self) -> None:
         """完成動画の生成が完了したら呼ぶ。share_slugが未発行なら新規発行する。"""

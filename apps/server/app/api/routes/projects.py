@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -11,6 +12,7 @@ from app.infra.db.repository import AssetRepo, ClipRepo, ProjectRepo
 from app.usecase.create_project import create_project
 from app.usecase.get_project_status import get_project_status
 from app.usecase.start_prepare import start_prepare
+from app.usecase.start_render import start_render
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -67,6 +69,77 @@ async def start_prepare_endpoint(
         access_token=body.access_token,
     )
     return StartPrepareResponse(project_id=result.project_id, status=result.status)
+
+
+class TransformRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    zoom: float
+    offset_x: float = Field(alias="offsetX")
+    offset_y: float = Field(alias="offsetY")
+
+
+class TransitionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    type: Literal["none", "fade"]
+    duration_ms: int = Field(alias="durationMs")
+
+
+class TimelineCutRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    cut_id: str = Field(alias="cutId")
+    order: int
+    clip_id: uuid.UUID = Field(alias="clipId")
+    start_ms: int = Field(alias="startMs")
+    end_ms: int = Field(alias="endMs")
+    transform: TransformRequest
+    transition_to_next: TransitionRequest | None = Field(default=None, alias="transitionToNext")
+
+
+class OutputConfigRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    aspect_ratio: Literal["9:16", "1:1", "3:4", "4:5", "16:9"] = Field(alias="aspectRatio")
+    width: int
+    height: int
+    fps: int
+
+
+class EditConfigRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    version: int
+    output: OutputConfigRequest
+    timeline: list[TimelineCutRequest]
+
+
+class StartRenderRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    access_token: str = Field(alias="accessToken")
+    title: str | None = None
+    description: str | None = None
+    edit_config: EditConfigRequest = Field(alias="editConfig")
+
+
+class StartRenderResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    project_id: uuid.UUID = Field(alias="projectId")
+    status: str
+
+
+@router.post("/{project_id}/render", response_model=StartRenderResponse)
+async def start_render_endpoint(
+    project_id: uuid.UUID,
+    body: StartRenderRequest,
+    project_repo: ProjectRepo = Depends(get_project_repo),
+) -> StartRenderResponse:
+    """editConfigを保存しrender worker起動、project.status=rendering。"""
+    result = start_render(
+        project_repo,
+        project_id=project_id,
+        access_token=body.access_token,
+        title=body.title,
+        description=body.description,
+        edit_config=body.edit_config.model_dump(by_alias=True),
+    )
+    return StartRenderResponse(project_id=result.project_id, status=result.status)
 
 
 class SceneResponse(BaseModel):
