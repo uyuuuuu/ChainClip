@@ -92,6 +92,10 @@ class Project:
         self.error_code = error_code
         self.error_message = error_message
 
+    def final_object_key(self) -> str:
+        """R2上の完成動画オブジェクトキー。"""
+        return f"final/{self.id}.mp4"
+
     def assert_status(self, expected: ProjectStatus) -> None:
         """現在のstatusがexpectedでない場合はInvalidProjectStateErrorを投げる。"""
         if self.status != expected:

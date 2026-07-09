@@ -12,7 +12,7 @@ from tests.fakes import FakeProjectRepo
 
 EDIT_CONFIG = {
     "version": 1,
-    "output": {"aspectRatio": "9:16", "width": 1080, "height": 1920, "fps": 30},
+    "transition": "fade",
     "timeline": [
         {
             "cutId": "client-uuid",
@@ -21,7 +21,6 @@ EDIT_CONFIG = {
             "startMs": 1000,
             "endMs": 3500,
             "transform": {"zoom": 1.4, "offsetX": 0.1, "offsetY": -0.05},
-            "transitionToNext": {"type": "fade", "durationMs": 400},
         }
     ],
 }
