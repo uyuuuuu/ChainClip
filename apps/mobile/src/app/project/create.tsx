@@ -20,7 +20,7 @@ type PickedVideo = {
 };
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import logo from "../../../assets/images/chainclip_logo.png";
+import logo from "../../../assets/images/icon.png";
 
 export default function CreateScreen() {
   // アップロードした動画
@@ -39,6 +39,8 @@ export default function CreateScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['videos'], // ビデオのみ選択可
       allowsMultipleSelection: true,
+        preferredAssetRepresentationMode:
+            ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
     });
     if (result.canceled) return; // 選択をキャンセルした場合
 
@@ -63,6 +65,7 @@ export default function CreateScreen() {
     }
     // アップロード一覧に追加
     setVideos((prev) => [...prev, ...picked]);
+    if (picked.length > 0) setStatus('uploaded');
   }
 
   // アップロード取り消し
@@ -98,18 +101,18 @@ export default function CreateScreen() {
     <SafeAreaView className="w-full flex-1 bg-white">
       {/* ロゴ */}
       <View className="px-12 py-8 items-center">
-        <Image source={logo} className="w-64 h-64" resizeMode="contain" />
+        <Image source={logo} className="w-32 h-32" resizeMode="contain" />
       </View>
 
       <ScrollView contentContainerClassName="px-12 pb-8">
         {/* アップロード前 */}
         {status === 'uploading' &&
-          <View className="gap-4 my-12 flex flex-col justify-center items-center">
-            <Text className="text-center text-2xl font-bold text-[#029FFF] mt-8 mb-12">
+          <View className="gap-4 my-4 flex flex-col justify-center items-center">
+            <Text className="text-center text-2xl font-bold text-[#029FFF] mb-8">
               思い出の動画をまとめる
             </Text>
             {/* 動画アップロードボタン */}
-            <Button className="py-16 self-center px-4 gap-1 flex flex-col justify-center items-center"
+            <Button className="h-auto py-4 self-center px-4 gap-1 flex flex-col justify-center items-center"
               onPress={pickVideos}>
               <MaterialCommunityIcons name="upload" size={68} color="white" />
               <Text className="text-lg">動画をアップロード</Text>
@@ -191,7 +194,7 @@ export default function CreateScreen() {
               <Text className="text-xs mb-2 text-gray-500">終了次第ポップアップ通知でお知らせします。</Text>
               <GradientButton
                 label="動画を解析中…"
-                style={{ width: "80%", height: '80%' }}
+                style={{ width: "80%"}}
                 textStyle={{ fontSize: 24 }}
                 onPress={() =>
                   router.push({
@@ -201,7 +204,7 @@ export default function CreateScreen() {
                 }
               />
               <Progress
-                className="w-5/6 h-1"
+                className="mt-2 w-5/6 h-1"
                 value={progress * 100}
               />
             </View>
