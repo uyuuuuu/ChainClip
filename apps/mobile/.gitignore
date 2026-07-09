@@ -7,5 +7,6 @@ expo-env.d.ts
 
 # Native build artifacts
 ios/
+android/
 
 .DS_Store
