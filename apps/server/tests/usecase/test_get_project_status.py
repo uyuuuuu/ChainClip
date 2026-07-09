@@ -119,6 +119,39 @@ def test_get_project_status_returns_clip_video_and_scenes_when_ready(mock_url, m
     assert ready_clip.scenes[0].end_ms == 1000
 
 
+def test_get_project_status_returns_share_url_and_video_url_when_completed(monkeypatch) -> None:
+    """completed状態ではshare_slugから組み立てたshare_urlと完成動画のfinal_video_urlを返す。"""
+    monkeypatch.setenv("WEB_BASE_URL", "https://chainclip.example.com")
+    project_repo = FakeProjectRepo()
+    clip_repo = FakeClipRepo()
+    asset_repo = FakeAssetRepo()
+    project = Project.create(device_id=uuid.uuid4())
+    project.mark_uploading()
+    project.mark_uploaded()
+    project.mark_preparing()
+    project.mark_ready()
+    project.mark_completed()
+    project_repo.create(project)
+
+    asset_repo.create(
+        ProjectAsset.create(
+            project_id=project.id,
+            kind=AssetKind.FINAL_CLIP,
+            storage_provider=StorageProvider.R2,
+            bucket="test-bucket",
+            object_key="final/x.mp4",
+            public_url="https://videos.example.com/final/x.mp4",
+        )
+    )
+
+    result = get_project_status(
+        project_repo, clip_repo, asset_repo, project_id=project.id, access_token=project.access_token
+    )
+
+    assert result.share_url == f"https://chainclip.example.com/s/{project.share_slug}"
+    assert result.final_video_url == "https://videos.example.com/final/x.mp4"
+
+
 def test_get_project_status_returns_error_info_when_failed() -> None:
     """failed状態ではerror_phase/error_code/error_messageを返す。"""
     project_repo = FakeProjectRepo()

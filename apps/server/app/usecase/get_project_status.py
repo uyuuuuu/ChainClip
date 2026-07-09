@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,7 @@ from app.infra.db.repository import AssetRepo, ClipRepo, ProjectRepo
 from app.infra.storage import gcs
 
 VIDEO_URL_EXPIRES_IN_SECONDS = 3600
+WEB_BASE_URL = "WEB_BASE_URL"
 
 
 @dataclass
@@ -50,6 +52,8 @@ class ProjectStatusResult:
     error_phase: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    share_url: str | None = None
+    final_video_url: str | None = None
 
 
 def get_project_status(
@@ -84,6 +88,21 @@ def get_project_status(
             project_id=project.id,
             status=project.status.value,
             clips=[_build_ready_clip(clip, assets) for clip in clips],
+        )
+
+    if project.status == ProjectStatus.COMPLETED:
+        assets = asset_repo.list_by_project_id(project.id)
+        final_clip = next(a for a in assets if a.kind == AssetKind.FINAL_CLIP)
+
+        assert project.share_slug is not None
+        assert final_clip.public_url is not None
+
+        web_base_url = os.environ[WEB_BASE_URL]
+        return ProjectStatusResult(
+            project_id=project.id,
+            status=project.status.value,
+            share_url=f"{web_base_url.rstrip('/')}/s/{project.share_slug}",
+            final_video_url=final_clip.public_url,
         )
 
     if project.status == ProjectStatus.FAILED:
