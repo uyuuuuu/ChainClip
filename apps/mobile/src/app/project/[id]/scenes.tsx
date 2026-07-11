@@ -10,7 +10,7 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useRef, useState } from 'react';
 import { FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View } from 'react-native';
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
@@ -24,8 +24,8 @@ const CLIPS = [
         durationMs: 14000,
         video: mov1, // 本来は { url: 'https://...signed...', expiresAt: '...' }
         scenes: [
-            { sceneId: 'scene-1', sceneIndex: 0, startMs: 0, endMs: 3200, labels: ['Building', 'Tree'] },
-            { sceneId: 'scene-2', sceneIndex: 1, startMs: 3200, endMs: 8500, labels: ['Indoor'] },
+            { sceneId: 'scene-1', sceneIndex: 0, startMs: 0, endMs: 3200, labels: ['Building', 'Tree', 'mountain'] },
+            { sceneId: 'scene-2', sceneIndex: 1, startMs: 3200, endMs: 8500, labels: ['mountain'] },
             { sceneId: 'scene-3', sceneIndex: 2, startMs: 8500, endMs: 14000, labels: ['Building'] },
         ],
     },
@@ -35,7 +35,7 @@ const CLIPS = [
         durationMs: 13000,
         video: mov2,
         scenes: [
-            { sceneId: 'scene-4', sceneIndex: 0, startMs: 0, endMs: 4000, labels: ['Tree', 'Person'] },
+            { sceneId: 'scene-4', sceneIndex: 0, startMs: 0, endMs: 4000, labels: ['Tree', 'Person', 'Dog'] },
             { sceneId: 'scene-5', sceneIndex: 1, startMs: 4000, endMs: 13000, labels: ['Dog'] },
         ],
     },
@@ -56,6 +56,7 @@ const TAGS = ['All', ...new Set(ALL_SCENES.flatMap((s) => s.labels))];
 
 export default function ScenesScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
+    const insets = useSafeAreaInsets();
     const player = useVideoPlayer(CLIPS[0].video, (p) => {
         p.timeUpdateEventInterval = 0.25; // 再生位置イベントを0.25秒ごとに発火
         p.loop = false;
@@ -387,13 +388,15 @@ export default function ScenesScreen() {
             {/* シーン数表示 + 全選択チェックボックス */}
             <View className="mb-2 flex-row items-center justify-between px-6">
                 <Text className="text-xs text-gray-400">シーン候補：{filteredScenes.length}件</Text>
-                <Pressable onPress={toggleAll} className="flex-row items-center gap-2">
+                <View className="flex-row items-center gap-2">
                     <Text className="text-xs text-gray-400">全選択</Text>
-                    <Checkbox
-                        checked={allSelected}
-                        onCheckedChange={toggleAll}
-                    />
-                </Pressable>
+                    <Pressable onPress={toggleAll}>
+                        <Checkbox
+                            checked={allSelected}
+                            onCheckedChange={toggleAll}
+                        />
+                    </Pressable>
+                </View>
             </View>
 
             {/* シーン一覧 */}
@@ -432,18 +435,9 @@ export default function ScenesScreen() {
                                         {formatMs(item.endMs - item.startMs)}
                                     </Text>
                                 </View>
-                                {selected && (
-                                    <View className="absolute -top-1 -left-1">
-                                        <MaterialCommunityIcons
-                                            name='check-circle'
-                                            size={22}
-                                            color='#00C0E8'
-                                        />
-                                    </View>
-                                )}
                             </View>
                             {/* ラベル */}
-                            <View className="flex-1 flex-row flex-wrap justify-start content-center gap-2.5">
+                            <View className="flex-1 flex-row flex-wrap justify-start content-center gap-2">
                                 {item.labels.slice(0, 3).map((tag) => (
                                     <View
                                         key={tag}
@@ -458,22 +452,24 @@ export default function ScenesScreen() {
                                     </View>
                                 ))}
                             </View>
-                            <Button
+                            <Pressable
                                 onPress={() => toggleOne(item)}
-                                className={`w-22 items-center justify-center rounded-md py-2 ${selected ? 'bg-white border-2 border-primary' : 'bg-primary'
-                                    }`}
+                                hitSlop={1}
+                                className="mx-2"
                             >
-                                <Text className={`text-sm font-semibold ${selected ? 'text-primary' : 'text-white'}`}>
-                                    {selected ? '選択済み' : '選択する'}
-                                </Text>
-                            </Button>
-                        </Pressable >
+                                <Checkbox
+                                    checked={selected}
+                                    onCheckedChange={() => toggleOne(item)}
+                                />
+                            </Pressable>
+                        </Pressable>
                     );
                 }}
             />
 
             {/* 選択シーンを確認するフッター */}
-            <View className="w-full h-28 px-4 gap-3 flex-row items-center justify-center bg-white shadow-md shadow-gray-200">
+            <View
+                className="w-full h-28 px-4 gap-3 flex-row items-center justify-center bg-white">
                 <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
