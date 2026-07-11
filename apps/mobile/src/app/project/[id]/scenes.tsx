@@ -1,10 +1,14 @@
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { GradientButton } from '@/components/ui/gradientButton';
 import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
-import { router } from 'expo-router';
+import { useEditStore } from '@/stores/editStore';
+import { Asset } from 'expo-asset';
+import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { useEffect, useState } from 'react';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import { useEffect, useRef, useState } from 'react';
 import { FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -12,67 +16,82 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 // 仮
 import mov1 from "../../../../assets/videos/sample1.mp4";
-const SCENES = [
+import mov2 from "../../../../assets/videos/sample2.mp4";
+const CLIPS = [
     {
-        sceneId: '1',
-        thumb: require('@/assets/images/sample1.jpg'),
-        labels: ['Building', 'Tree'],
-        duration: '12:25',
+        clipId: 'clip-1',
+        clipIndex: 0,
+        durationMs: 14000,
+        video: mov1, // 本来は { url: 'https://...signed...', expiresAt: '...' }
+        scenes: [
+            { sceneId: 'scene-1', sceneIndex: 0, startMs: 0, endMs: 3200, labels: ['Building', 'Tree'] },
+            { sceneId: 'scene-2', sceneIndex: 1, startMs: 3200, endMs: 8500, labels: ['Indoor'] },
+            { sceneId: 'scene-3', sceneIndex: 2, startMs: 8500, endMs: 14000, labels: ['Building'] },
+        ],
     },
     {
-        sceneId: '2',
-        thumb: require('@/assets/images/sample2.jpg'),
-        labels: ['Indoor', 'Tree'],
-        duration: '7:14',
-    },
-    {
-        sceneId: '3',
-        thumb: require('@/assets/images/sample1.jpg'),
-        labels: ['Building', 'Tree'],
-        duration: '12:25',
-    },
-    {
-        sceneId: '4',
-        thumb: require('@/assets/images/sample2.jpg'),
-        labels: ['Indoor', 'Tree'],
-        duration: '7:14',
-    },
-    {
-        sceneId: '5',
-        thumb: require('@/assets/images/sample1.jpg'),
-        labels: ['Building', 'Tree'],
-        duration: '12:25',
-    },
-    {
-        sceneId: '6',
-        thumb: require('@/assets/images/sample2.jpg'),
-        labels: ['Indoor', 'Tree'],
-        duration: '7:14',
+        clipId: 'clip-2',
+        clipIndex: 1,
+        durationMs: 13000,
+        video: mov2,
+        scenes: [
+            { sceneId: 'scene-4', sceneIndex: 0, startMs: 0, endMs: 4000, labels: ['Tree', 'Person'] },
+            { sceneId: 'scene-5', sceneIndex: 1, startMs: 4000, endMs: 13000, labels: ['Dog'] },
+        ],
     },
 ];
-const TAGS = ['All', 'Tree', 'Indoor', 'Building', 'Dog', 'Person'];
+
+// リストに表示するシーンの配列
+const ALL_SCENES = CLIPS.flatMap((clip) =>
+    clip.scenes.map((scene) => ({
+        ...scene,
+        labels: [...new Set(scene.labels)],
+        clipId: clip.clipId,
+        video: clip.video,
+    }))
+);
+type SceneItem = (typeof ALL_SCENES)[number];
+
+const TAGS = ['All', ...new Set(ALL_SCENES.flatMap((s) => s.labels))];
 
 export default function ScenesScreen() {
-    // const { id } = useLocalSearchParams<{ id: string }>();
-    const player = useVideoPlayer(mov1, (p) => {
+    const { id } = useLocalSearchParams<{ id: string }>();
+    const player = useVideoPlayer(CLIPS[0].video, (p) => {
         p.timeUpdateEventInterval = 0.25; // 再生位置イベントを0.25秒ごとに発火
         p.loop = false;
     });
 
     // 読み込みできているかどうか(同期エラー防ぎ)
     const [isReady, setIsReady] = useState(false);
-
     // 再生されているかどうか
     const [isPlaying, setIsPlaying] = useState(false);
-
     // 再生進捗
     const [progress, setProgress] = useState(0);
-
     // バーの実際の幅(px)
     const [barWidth, setBarWidth] = useState(0);
-
     // 再生時間
     const [duration, setDuration] = useState(0);
+    // 動画差し替え後、読み込み完了を待ってからシークするための「予約」
+    const pendingSeekMs = useRef<number | null>(null);
+    // いまプレーヤーに読み込まれているclip
+    const loadedClipId = useRef<string>(CLIPS[0].clipId);
+    // プレビュー中のシーン範囲
+    type PreviewRange = { sceneId: string; startMs: number; endMs: number };
+    const [preview, setPreview] = useState<PreviewRange | null>(() => {
+        const first = ALL_SCENES[0];
+        return first
+            ? { sceneId: first.sceneId, startMs: first.startMs, endMs: first.endMs }
+            : null;
+    });
+
+    // イベントリスナーから読むためのref(理由は後述)
+    const previewRef = useRef<PreviewRange | null>(preview);
+
+    // stateとrefを常にセットで更新するヘルパー
+    const setPreviewRange = (p: PreviewRange | null) => {
+        previewRef.current = p;
+        setPreview(p);
+    };
 
     // 時間表示
     const formatTime = (seconds: number): string => {
@@ -82,6 +101,14 @@ export default function ScenesScreen() {
         const s = total % 60;
         const pad = (n: number) => String(n).padStart(2, '0');
         return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    };
+
+    // シーンの長さ表示（ミリ秒 → m:ss）
+    const formatMs = (ms: number): string => {
+        const total = Math.floor(ms / 1000);
+        const m = Math.floor(total / 60);
+        const s = total % 60;
+        return `${m}:${String(s).padStart(2, '0')}`;
     };
 
     // プレーヤーの状態をUIに反映
@@ -98,14 +125,38 @@ export default function ScenesScreen() {
             setIsPlaying(isPlaying);
         });
         const timeSub = player.addListener('timeUpdate', ({ currentTime }) => {
+            const range = previewRef.current;
+            if (range) {
+                // シーン基準: 0〜シーンの長さ に変換して進捗を出す
+                const startSec = range.startMs / 1000;
+                const endSec = range.endMs / 1000;
+                const lengthSec = endSec - startSec;
+
+                const rel = Math.min(Math.max(currentTime - startSec, 0), lengthSec); // 0〜lengthSecに丸める
+                setProgress(lengthSec > 0 ? rel / lengthSec : 0);
+
+                // シーンの終わりに達したら停止(バーは満タンのまま止まる)
+                if (currentTime >= endSec) {
+                    player.pause();
+                }
+            } else if (player.duration > 0) {
+                // シーン未選択時: これまで通りclip全体基準
+                setProgress(currentTime / player.duration);
+            }
+
             if (player.duration > 0) {
                 setDuration(player.duration);
-                setProgress(currentTime / player.duration);
-                setIsReady(true);   // ← durationが取れてる時点でシーク可能とみなす
+                setIsReady(true);
             }
         });
         const statusSub = player.addListener('statusChange', ({ status }) => {
             setIsReady(status === 'readyToPlay');
+            // 動画差し替え後、読み込みが終わったら予約していた位置にシークして再生
+            if (status === 'readyToPlay' && pendingSeekMs.current != null) {
+                player.currentTime = pendingSeekMs.current / 1000;
+                pendingSeekMs.current = null;
+                player.play();
+            }
         });
 
         return () => {
@@ -115,68 +166,151 @@ export default function ScenesScreen() {
         };
     }, [player]);
 
+    // 表示に使う「動画の長さ」: プレビュー中はシーンの長さ、未選択ならclip全体
+    const displayDuration = preview
+        ? (preview.endMs - preview.startMs) / 1000
+        : duration;
+
     // 再生/停止の切り替え
     const togglePlay = () => {
         if (isPlaying) {
             player.pause();
-        } else {
-            player.play();
+            return;
         }
+        const range = previewRef.current;
+        // シーンの終端(誤差0.05秒を許容)にいるなら先頭に戻してから再生
+        if (range && player.currentTime >= range.endMs / 1000 - 0.05) {
+            player.currentTime = range.startMs / 1000;
+            setProgress(0);
+        }
+        player.play();
     };
 
     // バーがタップされたら再生位置を変える
     const handleSeek = (e: GestureResponderEvent) => {
-        const duration = player.duration;
+        const d = player.duration;
         // barWidthが未確定、またはdurationが未取得なら何もしない
-        if (!barWidth || !Number.isFinite(duration) || duration <= 0) return;
+        if (!barWidth || !Number.isFinite(d) || d <= 0) return;
 
         const ratio = Math.min(Math.max(e.nativeEvent.locationX / barWidth, 0), 1);
-        const nextTime = ratio * duration;
+        const range = previewRef.current;
 
-        if (!Number.isFinite(nextTime)) return; // NaN, Infinityのような有限な数値でない場合return
-
-        player.currentTime = nextTime;
+        if (range) {
+            // バーの0〜100%を startMs〜endMs に対応させる
+            const startSec = range.startMs / 1000;
+            const endSec = range.endMs / 1000;
+            player.currentTime = startSec + ratio * (endSec - startSec);
+        } else {
+            player.currentTime = ratio * d;
+        }
         setProgress(ratio); // UIに反映
     };
+
+    // シーンをタップしたら、そのシーンをプレビュー再生する
+    const previewScene = async (scene: SceneItem) => {
+        setPreviewRange({ sceneId: scene.sceneId, startMs: scene.startMs, endMs: scene.endMs });
+        setProgress(0); // バーを即座に0に見せる(シーク完了を待たない)
+
+        if (loadedClipId.current !== scene.clipId) {
+            // 別のclipのシーン → 動画を差し替える。
+            // 差し替え直後はまだシークできないので、位置を「予約」して
+            // statusChangeがreadyToPlayになった時にシーク＆再生する
+            loadedClipId.current = scene.clipId;
+            pendingSeekMs.current = scene.startMs;
+            setIsReady(false);
+            player.pause();
+            try {
+                await player.replaceAsync(scene.video);  // 読み込み完了まで待つ
+            } catch (e) {
+                // 連打で中断された場合など。最後のタップ分が生きるので何もしなくてよい
+                console.warn('動画の差し替えが中断されました:', e);
+            }
+        } else if (!isReady) {
+            // 同じclipだがまだ読み込み中 → こちらも予約しておく
+            pendingSeekMs.current = scene.startMs;
+        } else {
+            // 同じclipで読み込み済み → すぐシークして再生
+            player.currentTime = scene.startMs / 1000;
+            player.play();
+        }
+    };
+
+    // サムネイル生成
+    // sceneId → サムネ画像URI の対応表として持つ
+    const [thumbs, setThumbs] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        let cancelled = false; // 画面を離れた後にsetStateしないためのフラグ
+
+        const generate = async () => {
+            for (const clip of CLIPS) {
+                try {
+                    // require()したローカル動画はAsset経由でURI(ファイルパス)に解決する。
+                    // サーバー接続後はsigned URLの文字列をそのまま渡せるので、この2行は不要になる
+                    const asset = Asset.fromModule(clip.video);
+                    await asset.downloadAsync();
+                    const videoUri = asset.localUri ?? asset.uri;
+
+                    for (const scene of clip.scenes) {
+                        if (cancelled) return;
+                        const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, {
+                            time: scene.startMs, // ミリ秒指定。シーンの先頭フレームをサムネにする
+                        });
+                        if (!cancelled) {
+                            // 1枚できるたびに反映（全部待たずに順次表示される）
+                            setThumbs((prev) => ({ ...prev, [scene.sceneId]: uri }));
+                        }
+                    }
+                } catch (e) {
+                    console.warn('サムネイル生成に失敗:', e);
+                }
+            }
+        };
+
+        generate();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    /* Zustand */
+    // 選択済みシーン
+    const selectedScenes = useEditStore((s) => s.selectedScenes);
+    // 選択されているかどうか
+    const toggleScene = useEditStore((s) => s.toggleScene);
+    // タイムライン生成
+    const buildTimeline = useEditStore((s) => s.buildTimeline);
+
+
+    // 選択済みシーンのSet
+    const selectedIdSet = new Set(selectedScenes.map((s) => s.sceneId));
+    const isDisabled = selectedScenes.length === 0;
+
+    // storeのtoggleSceneに渡す形に変換する
+    const toggleOne = (scene: SceneItem) =>
+        toggleScene({
+            sceneId: scene.sceneId,
+            clipId: scene.clipId,
+            startMs: scene.startMs,
+            endMs: scene.endMs,
+        });
 
     // 絞り込み検索で選択されているタグ(複数選択は現状できない)
     const [activeTag, setActiveTag] = useState('All');
 
-    // タイムライン追加候補として選択されているシーン
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-    // 選択シーンがあるかどうか
-    const isDisabled = selectedIds.size === 0;
-
     // タグの絞り込み
     const filteredScenes =
-        activeTag === 'All' ? SCENES : SCENES.filter((s) => s.labels.includes(activeTag));
+        activeTag === 'All' ? ALL_SCENES : ALL_SCENES.filter((s) => s.labels.includes(activeTag));
 
     // 表示中の全シーンが選択済みかどうか
     const allSelected =
-        filteredScenes.length > 0 && filteredScenes.every((s) => selectedIds.has(s.sceneId));
+        filteredScenes.length > 0 && filteredScenes.every((s) => selectedIdSet.has(s.sceneId));
 
     const toggleAll = () => {
-        setSelectedIds((prev) => {
-            const next = new Set(prev);
-            filteredScenes.forEach((s) => (allSelected ? next.delete(s.sceneId) : next.add(s.sceneId)));
-            return next;
-        });
-    };
-
-    const toggleOne = (sceneId: string) => {
-        setSelectedIds((prev) => {
-            const next = new Set(prev);
-            next.has(sceneId) ? next.delete(sceneId) : next.add(sceneId);
-            return next;
-        });
-    };
-
-    const removeScene = (sceneId: string) => {
-        setSelectedIds((prev) => {
-            const updated = new Set(prev); // 現在の状態をコピー
-            updated.delete(sceneId);
-            return updated;
+        filteredScenes.forEach((scene) => {
+            const isSelected = selectedIdSet.has(scene.sceneId);
+            // 全選択済みなら全部OFFに、そうでなければ未選択のものだけONにする
+            if (allSelected ? isSelected : !isSelected) toggleOne(scene);
         });
     };
 
@@ -217,7 +351,7 @@ export default function ScenesScreen() {
                 >
                     {/* 時間表示 */}
                     <Text className="absolute bottom-4 left-0 text-[10px] text-gray-500">
-                        {formatTime(progress * duration)} / {formatTime(duration)}
+                        {formatTime(progress * displayDuration)} / {formatTime(displayDuration)}
                     </Text>
                     {/* シークバー */}
                     <Pressable
@@ -255,12 +389,6 @@ export default function ScenesScreen() {
                 <Text className="text-xs text-gray-400">シーン候補：{filteredScenes.length}件</Text>
                 <Pressable onPress={toggleAll} className="flex-row items-center gap-2">
                     <Text className="text-xs text-gray-400">全選択</Text>
-                    {/* <View
-                        className={`h-5 w-5 items-center justify-center rounded-full border ${allSelected ? 'border-cyan-400 bg-cyan-400' : 'border-gray-300'
-                            }`}
-                    >
-                        {allSelected && <Ionicons name="checkmark" size={14} color="white" />}
-                    </View> */}
                     <Checkbox
                         checked={allSelected}
                         onCheckedChange={toggleAll}
@@ -268,45 +396,81 @@ export default function ScenesScreen() {
                 </Pressable>
             </View>
 
-            <ScrollView>
-                {/* シーン一覧 */}
-                <FlatList
-                    data={filteredScenes}
-                    keyExtractor={(s) => s.sceneId}
-                    className="flex-1"
-                    contentContainerClassName="px-4 pb-12 gap-3"
-                    renderItem={({ item }) => {
-                        const selected = selectedIds.has(item.sceneId);
-                        return (
-                            <Pressable
-                                onPress={() => toggleOne(item.sceneId)}
-                                className={`p-2 mx-2 h-18 flex-row items-center gap-3 rounded-lg border-2 shadow-md shadow-gray-100 ${selected ? 'border-primary' : 'border-gray-200'
+            {/* シーン一覧 */}
+            <FlatList
+                data={filteredScenes}
+                keyExtractor={(s) => s.sceneId}
+                className="flex-1"
+                contentContainerClassName="px-4 pb-8 gap-3"
+                renderItem={({ item }) => {
+                    const selected = selectedIdSet.has(item.sceneId);
+                    const isPreviewing = preview?.sceneId === item.sceneId;
+                    return (
+                        <Pressable
+                            onPress={() => previewScene(item)}
+                            className={`p-2 mx-2 flex-row items-center gap-2 rounded-lg border-2 shadow-md shadow-gray-100 ${isPreviewing ? 'border-primary' : 'border-gray-200'}
+                            `}
+                        >
+                            <View className="relative">
+                                {/* サムネイル（生成中はグレーのプレースホルダー） */}
+                                {thumbs[item.sceneId] ? (
+                                    <Image
+                                        source={{ uri: thumbs[item.sceneId] }}
+                                        style={{ width: 96, height: 52 }}
+                                        className="h-16 w-24 rounded-sm"
+                                        resizeMode="cover"
+                                    />
+                                ) : (
+                                    <View
+                                        style={{ width: 96, height: 52 }}
+                                        className="rounded-sm bg-slate-200"
+                                    />
+                                )}
+                                {/* シーンの長さ */}
+                                <View className="absolute bottom-1 right-1 rounded bg-black/70 px-1">
+                                    <Text className="text-[10px] text-white">
+                                        {formatMs(item.endMs - item.startMs)}
+                                    </Text>
+                                </View>
+                                {selected && (
+                                    <View className="absolute -top-1 -left-1">
+                                        <MaterialCommunityIcons
+                                            name='check-circle'
+                                            size={22}
+                                            color='#00C0E8'
+                                        />
+                                    </View>
+                                )}
+                            </View>
+                            {/* ラベル */}
+                            <View className="flex-1 flex-row flex-wrap justify-start content-center gap-2.5">
+                                {item.labels.slice(0, 3).map((tag) => (
+                                    <View
+                                        key={tag}
+                                        className="rounded-md px-2.5 py-0.5 bg-slate-100 shadow-md shadow-gray-100"
+                                    >
+                                        <Text
+                                            className="text-xs font-semibold text-[#262626]"
+                                            numberOfLines={1}
+                                        >
+                                            {tag}
+                                        </Text>
+                                    </View>
+                                ))}
+                            </View>
+                            <Button
+                                onPress={() => toggleOne(item)}
+                                className={`w-22 items-center justify-center rounded-md py-2 ${selected ? 'bg-white border-2 border-primary' : 'bg-primary'
                                     }`}
                             >
-                                <Image
-                                    source={item.thumb}
-                                    style={{ width: 96, height: 52 }}
-                                    className="h-16 w-24 rounded-sm"
-                                    resizeMode="cover" />
-                                {/* <Text className="text-xs text-[#262626]">
-                                    {item.labels.join(' / ')}</Text> */}
-                                <View className=" mx-2 grow-0 flex-row justify-center items-center gap-2 px-4 py-2">
-                                    {item.labels.map((tag) => (
-                                        <View
-                                            key={tag}
-                                            className="rounded-md px-3 py-1 shadow-md shadow-gray-100 bg-slate-100"
-                                        >
-                                            <Text className="text-sm font-semibold text-[#262626]">
-                                                {tag}
-                                            </Text>
-                                        </View>
-                                    ))}
-                                </View>
-                            </Pressable>
-                        );
-                    }}
-                />
-            </ScrollView>
+                                <Text className={`text-sm font-semibold ${selected ? 'text-primary' : 'text-white'}`}>
+                                    {selected ? '選択済み' : '選択する'}
+                                </Text>
+                            </Button>
+                        </Pressable >
+                    );
+                }}
+            />
 
             {/* 選択シーンを確認するフッター */}
             <View className="w-full h-28 px-4 gap-3 flex-row items-center justify-center bg-white shadow-md shadow-gray-200">
@@ -316,47 +480,49 @@ export default function ScenesScreen() {
                     className="flex-1"
                     contentContainerClassName="items-center gap-3 py-3 pr-2"
                 >
-                    {[...selectedIds].map((id) => {
-                        const scene = SCENES.find((s) => s.sceneId === id);
-                        if (!scene) return null;   // 念のためのガード
-                        return (
-                            <View key={scene.sceneId} className="relative">
+                    {selectedScenes.map((scene) => (
+                        <View key={scene.sceneId} className="relative">
+                            {thumbs[scene.sceneId] ? (
                                 <Image
-                                    source={scene.thumb}
+                                    source={{ uri: thumbs[scene.sceneId] }}
                                     style={{ width: 58, height: 58 }}
                                     className="rounded-sm"
                                     resizeMode="cover"
                                 />
-                                {/* 削除ボタン */}
-                                <Pressable
-                                    className="absolute -top-2 -right-2"
-                                    onPress={() => removeScene(scene.sceneId)}
-                                    hitSlop={8}
-                                >
-                                    <View className="absolute top-[4px] left-[4px] w-[16px] h-[16px] bg-white rounded-full" />
-                                    <MaterialCommunityIcons name="close-circle" size={24} color="black" />
-                                </Pressable>
-                            </View>
-                        )
-                    })}
+                            ) : (
+                                <View style={{ width: 58, height: 58 }} className="rounded-sm bg-slate-200" />
+                            )}
+                            {/* 削除ボタン */}
+                            <Pressable
+                                className="absolute -top-2 -right-2"
+                                onPress={() => toggleScene(scene)}
+                                hitSlop={8}
+                            >
+                                <View className="absolute top-[4px] left-[4px] w-[16px] h-[16px] bg-white rounded-full" />
+                                <MaterialCommunityIcons name="close-circle" size={24} color="black" />
+                            </Pressable>
+                        </View>
+                    )
+                    )}
                 </ScrollView>
                 <View className="items-center justify-center gap-2">
                     <View className="flex-row items-baseline gap-1">
                         <Text className="mr-2 text-xs text-gray-500">選択中</Text>
-                        <Text className="text-xl font-bold">{selectedIds.size}</Text>
-                        <Text className="text-xs text-gray-500">/ {SCENES.length}</Text>
+                        <Text className="text-xl font-bold">{selectedScenes.length}</Text>
+                        <Text className="text-xs text-gray-500">/ {ALL_SCENES.length}</Text>
                     </View>
                     <GradientButton
                         label="シーンを切り抜く"
                         textStyle={{ fontSize: 16, paddingHorizontal: 6, paddingVertical: 0 }}
                         style={{ opacity: isDisabled ? 0.4 : 1 }}
-                        onPress={() =>
-                            isDisabled ? () => { } : () =>
-                                router.push({
-                                    pathname: '/project/[id]/editor',
-                                    params: { id: '123' },
-                                })
-                        }
+                        onPress={() => {
+                            if (isDisabled) return;
+                            buildTimeline();
+                            router.push({
+                                pathname: '/project/[id]/editor',
+                                params: { id },
+                            });
+                        }}
                     />
                 </View>
             </View>
