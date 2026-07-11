@@ -108,3 +108,11 @@ def upload_json(key: str, data: dict[str, Any]) -> str:
     blob = bucket.blob(key)
     blob.upload_from_string(json.dumps(data), content_type="application/json")
     return key
+
+
+def delete_prefix(prefix: str) -> None:
+    """GCS上の指定prefix配下のオブジェクトをすべて削除する。"""
+    bucket_name = os.environ["GCS_BUCKET_NAME"]
+    bucket = storage_client.bucket(bucket_name)
+    for blob in bucket.list_blobs(prefix=prefix):
+        blob.delete()

@@ -20,3 +20,11 @@ class InvalidClipError(DomainError):
 
 class GcsObjectNotFoundError(DomainError):
     """GCS上に対象オブジェクトが存在しない場合。"""
+
+
+class ClipNotFoundError(DomainError):
+    """editConfigが参照するclipIdのclipが存在しない場合。"""
+
+
+class R2UploadError(DomainError):
+    """R2への完成動画アップロードに失敗した場合。"""
