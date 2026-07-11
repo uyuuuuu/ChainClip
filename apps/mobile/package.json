@@ -5,6 +5,7 @@
   "dependencies": {
     "@expo/ui": "~56.0.18",
     "@expo/vector-icons": "^15.0.2",
+    "@rn-primitives/checkbox": "^1.5.2",
     "@rn-primitives/portal": "^1.4.0",
     "@rn-primitives/progress": "^1.5.2",
     "@rn-primitives/slot": "^1.4.0",
@@ -29,8 +30,10 @@
     "expo-status-bar": "~56.0.4",
     "expo-symbols": "~56.0.6",
     "expo-system-ui": "~56.0.5",
+    "expo-video": "~56.1.4",
     "expo-video-thumbnails": "~56.0.3",
     "expo-web-browser": "~56.0.5",
+    "lucide-react-native": "^1.23.0",
     "nativewind": "^4.2.6",
     "prettier-plugin-tailwindcss": "^0.5.14",
     "react": "19.2.3",

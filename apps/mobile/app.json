@@ -48,7 +48,8 @@
           "photosPermission": "動画を選択するために、フォトライブラリへのアクセスを許可してください。"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,
