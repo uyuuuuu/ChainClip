@@ -44,6 +44,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/render": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Render Endpoint
+         * @description editConfigを保存しrender worker起動、project.status=rendering。
+         */
+        post: operations["start_render_endpoint_projects__project_id__render_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}": {
         parameters: {
             query?: never;
@@ -177,11 +197,6 @@ export interface components {
              */
             expiresAt: string;
         };
-        /** CompleteUploadRequest */
-        CompleteUploadRequest: {
-            /** Accesstoken */
-            accessToken: string;
-        };
         /** CompleteUploadResponse */
         CompleteUploadResponse: {
             /**
@@ -212,6 +227,14 @@ export interface components {
             /** Accesstoken */
             accessToken: string;
         };
+        /** EditConfigRequest */
+        EditConfigRequest: {
+            /** Version */
+            version: number;
+            output: components["schemas"]["OutputConfigRequest"];
+            /** Timeline */
+            timeline: components["schemas"]["TimelineCutRequest"][];
+        };
         /** GetProjectStatusResponse */
         GetProjectStatusResponse: {
             /**
@@ -239,6 +262,20 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** OutputConfigRequest */
+        OutputConfigRequest: {
+            /**
+             * Aspectratio
+             * @enum {string}
+             */
+            aspectRatio: "9:16" | "1:1" | "3:4" | "4:5" | "16:9";
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** Fps */
+            fps: number;
+        };
         /** ReadyClipResponse */
         ReadyClipResponse: {
             /**
@@ -260,8 +297,6 @@ export interface components {
         };
         /** RequestUploadUrlsRequest */
         RequestUploadUrlsRequest: {
-            /** Accesstoken */
-            accessToken: string;
             /** Clips */
             clips: components["schemas"]["ClipUploadRequestBody"][];
         };
@@ -295,11 +330,6 @@ export interface components {
             /** Videourl */
             videoUrl: string;
         };
-        /** StartPrepareRequest */
-        StartPrepareRequest: {
-            /** Accesstoken */
-            accessToken: string;
-        };
         /** StartPrepareResponse */
         StartPrepareResponse: {
             /**
@@ -309,6 +339,61 @@ export interface components {
             projectId: string;
             /** Status */
             status: string;
+        };
+        /** StartRenderRequest */
+        StartRenderRequest: {
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
+            editConfig: components["schemas"]["EditConfigRequest"];
+        };
+        /** StartRenderResponse */
+        StartRenderResponse: {
+            /**
+             * Projectid
+             * Format: uuid
+             */
+            projectId: string;
+            /** Status */
+            status: string;
+        };
+        /** TimelineCutRequest */
+        TimelineCutRequest: {
+            /** Cutid */
+            cutId: string;
+            /** Order */
+            order: number;
+            /**
+             * Clipid
+             * Format: uuid
+             */
+            clipId: string;
+            /** Startms */
+            startMs: number;
+            /** Endms */
+            endMs: number;
+            transform: components["schemas"]["TransformRequest"];
+            transitionToNext?: components["schemas"]["TransitionRequest"] | null;
+        };
+        /** TransformRequest */
+        TransformRequest: {
+            /** Zoom */
+            zoom: number;
+            /** Offsetx */
+            offsetX: number;
+            /** Offsety */
+            offsetY: number;
+        };
+        /** TransitionRequest */
+        TransitionRequest: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "none" | "fade";
+            /** Durationms */
+            durationMs: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -368,17 +453,15 @@ export interface operations {
     start_prepare_endpoint_projects__project_id__prepare_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                Authorization: string;
+            };
             path: {
                 project_id: string;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StartPrepareRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -400,12 +483,49 @@ export interface operations {
             };
         };
     };
+    start_render_endpoint_projects__project_id__render_post: {
+        parameters: {
+            query?: never;
+            header: {
+                Authorization: string;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartRenderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartRenderResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_project_status_endpoint_projects__project_id__get: {
         parameters: {
-            query: {
-                accessToken: string;
+            query?: never;
+            header: {
+                Authorization: string;
             };
-            header?: never;
             path: {
                 project_id: string;
             };
@@ -436,7 +556,9 @@ export interface operations {
     request_upload_urls_endpoint_projects__project_id__clips_upload_urls_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                Authorization: string;
+            };
             path: {
                 project_id: string;
             };
@@ -471,17 +593,15 @@ export interface operations {
     complete_upload_endpoint_clips__clip_id__upload_complete_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                Authorization: string;
+            };
             path: {
                 clip_id: string;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CompleteUploadRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

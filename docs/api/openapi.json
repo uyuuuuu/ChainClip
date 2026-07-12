@@ -76,6 +76,68 @@
               "format": "uuid",
               "title": "Project Id"
             }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartPrepareResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/render": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Start Render Endpoint",
+        "description": "editConfigを保存しrender worker起動、project.status=rendering。",
+        "operationId": "start_render_endpoint_projects__project_id__render_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
+            }
           }
         ],
         "requestBody": {
@@ -83,7 +145,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StartPrepareRequest"
+                "$ref": "#/components/schemas/StartRenderRequest"
               }
             }
           }
@@ -94,7 +156,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StartPrepareResponse"
+                  "$ref": "#/components/schemas/StartRenderResponse"
                 }
               }
             }
@@ -132,12 +194,12 @@
             }
           },
           {
-            "name": "accessToken",
-            "in": "query",
+            "name": "Authorization",
+            "in": "header",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Accesstoken"
+              "title": "Authorization"
             }
           }
         ],
@@ -182,6 +244,15 @@
               "type": "string",
               "format": "uuid",
               "title": "Project Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
             }
           }
         ],
@@ -241,18 +312,17 @@
               "format": "uuid",
               "title": "Clip Id"
             }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CompleteUploadRequest"
-              }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Authorization"
             }
           }
-        },
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -411,19 +481,6 @@
         ],
         "title": "ClipVideoResponse"
       },
-      "CompleteUploadRequest": {
-        "properties": {
-          "accessToken": {
-            "type": "string",
-            "title": "Accesstoken"
-          }
-        },
-        "type": "object",
-        "required": [
-          "accessToken"
-        ],
-        "title": "CompleteUploadRequest"
-      },
       "CompleteUploadResponse": {
         "properties": {
           "clipId": {
@@ -480,6 +537,31 @@
           "accessToken"
         ],
         "title": "CreateProjectResponse"
+      },
+      "EditConfigRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "output": {
+            "$ref": "#/components/schemas/OutputConfigRequest"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/TimelineCutRequest"
+            },
+            "type": "array",
+            "title": "Timeline"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "output",
+          "timeline"
+        ],
+        "title": "EditConfigRequest"
       },
       "GetProjectStatusResponse": {
         "properties": {
@@ -582,6 +664,41 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "OutputConfigRequest": {
+        "properties": {
+          "aspectRatio": {
+            "type": "string",
+            "enum": [
+              "9:16",
+              "1:1",
+              "3:4",
+              "4:5",
+              "16:9"
+            ],
+            "title": "Aspectratio"
+          },
+          "width": {
+            "type": "integer",
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "title": "Height"
+          },
+          "fps": {
+            "type": "integer",
+            "title": "Fps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aspectRatio",
+          "width",
+          "height",
+          "fps"
+        ],
+        "title": "OutputConfigRequest"
+      },
       "ReadyClipResponse": {
         "properties": {
           "clipId": {
@@ -630,10 +747,6 @@
       },
       "RequestUploadUrlsRequest": {
         "properties": {
-          "accessToken": {
-            "type": "string",
-            "title": "Accesstoken"
-          },
           "clips": {
             "items": {
               "$ref": "#/components/schemas/ClipUploadRequestBody"
@@ -644,7 +757,6 @@
         },
         "type": "object",
         "required": [
-          "accessToken",
           "clips"
         ],
         "title": "RequestUploadUrlsRequest"
@@ -729,19 +841,6 @@
         ],
         "title": "SharePageResponse"
       },
-      "StartPrepareRequest": {
-        "properties": {
-          "accessToken": {
-            "type": "string",
-            "title": "Accesstoken"
-          }
-        },
-        "type": "object",
-        "required": [
-          "accessToken"
-        ],
-        "title": "StartPrepareRequest"
-      },
       "StartPrepareResponse": {
         "properties": {
           "projectId": {
@@ -760,6 +859,152 @@
           "status"
         ],
         "title": "StartPrepareResponse"
+      },
+      "StartRenderRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "editConfig": {
+            "$ref": "#/components/schemas/EditConfigRequest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "editConfig"
+        ],
+        "title": "StartRenderRequest"
+      },
+      "StartRenderResponse": {
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Projectid"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "projectId",
+          "status"
+        ],
+        "title": "StartRenderResponse"
+      },
+      "TimelineCutRequest": {
+        "properties": {
+          "cutId": {
+            "type": "string",
+            "title": "Cutid"
+          },
+          "order": {
+            "type": "integer",
+            "title": "Order"
+          },
+          "clipId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Clipid"
+          },
+          "startMs": {
+            "type": "integer",
+            "title": "Startms"
+          },
+          "endMs": {
+            "type": "integer",
+            "title": "Endms"
+          },
+          "transform": {
+            "$ref": "#/components/schemas/TransformRequest"
+          },
+          "transitionToNext": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TransitionRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "cutId",
+          "order",
+          "clipId",
+          "startMs",
+          "endMs",
+          "transform"
+        ],
+        "title": "TimelineCutRequest"
+      },
+      "TransformRequest": {
+        "properties": {
+          "zoom": {
+            "type": "number",
+            "title": "Zoom"
+          },
+          "offsetX": {
+            "type": "number",
+            "title": "Offsetx"
+          },
+          "offsetY": {
+            "type": "number",
+            "title": "Offsety"
+          }
+        },
+        "type": "object",
+        "required": [
+          "zoom",
+          "offsetX",
+          "offsetY"
+        ],
+        "title": "TransformRequest"
+      },
+      "TransitionRequest": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "none",
+              "fade"
+            ],
+            "title": "Type"
+          },
+          "durationMs": {
+            "type": "integer",
+            "title": "Durationms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "durationMs"
+        ],
+        "title": "TransitionRequest"
       },
       "ValidationError": {
         "properties": {

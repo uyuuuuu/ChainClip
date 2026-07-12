@@ -4,10 +4,15 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.dependencies import get_asset_repo, get_clip_repo, get_project_repo
+from app.api.dependencies import (
+    get_access_token,
+    get_asset_repo,
+    get_clip_repo,
+    get_project_repo,
+)
 from app.infra.db.repository import AssetRepo, ClipRepo, ProjectRepo
 from app.usecase.create_project import create_project
 from app.usecase.get_project_status import get_project_status
@@ -43,11 +48,6 @@ async def create_project_endpoint(
     )
 
 
-class StartPrepareRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    access_token: str = Field(alias="accessToken")
-
-
 class StartPrepareResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     project_id: uuid.UUID = Field(alias="projectId")
@@ -57,7 +57,7 @@ class StartPrepareResponse(BaseModel):
 @router.post("/{project_id}/prepare", response_model=StartPrepareResponse)
 async def start_prepare_endpoint(
     project_id: uuid.UUID,
-    body: StartPrepareRequest,
+    access_token: str = Depends(get_access_token),
     project_repo: ProjectRepo = Depends(get_project_repo),
     clip_repo: ClipRepo = Depends(get_clip_repo),
 ) -> StartPrepareResponse:
@@ -66,7 +66,7 @@ async def start_prepare_endpoint(
         project_repo,
         clip_repo,
         project_id=project_id,
-        access_token=body.access_token,
+        access_token=access_token,
     )
     return StartPrepareResponse(project_id=result.project_id, status=result.status)
 
@@ -112,7 +112,6 @@ class EditConfigRequest(BaseModel):
 
 class StartRenderRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
-    access_token: str = Field(alias="accessToken")
     title: str | None = None
     description: str | None = None
     edit_config: EditConfigRequest = Field(alias="editConfig")
@@ -128,13 +127,14 @@ class StartRenderResponse(BaseModel):
 async def start_render_endpoint(
     project_id: uuid.UUID,
     body: StartRenderRequest,
+    access_token: str = Depends(get_access_token),
     project_repo: ProjectRepo = Depends(get_project_repo),
 ) -> StartRenderResponse:
     """editConfigを保存しrender worker起動、project.status=rendering。"""
     result = start_render(
         project_repo,
         project_id=project_id,
-        access_token=body.access_token,
+        access_token=access_token,
         title=body.title,
         description=body.description,
         edit_config=body.edit_config.model_dump(by_alias=True),
@@ -183,7 +183,7 @@ class GetProjectStatusResponse(BaseModel):
 @router.get("/{project_id}", response_model=GetProjectStatusResponse)
 async def get_project_status_endpoint(
     project_id: uuid.UUID,
-    access_token: str = Query(alias="accessToken"),
+    access_token: str = Depends(get_access_token),
     project_repo: ProjectRepo = Depends(get_project_repo),
     clip_repo: ClipRepo = Depends(get_clip_repo),
     asset_repo: AssetRepo = Depends(get_asset_repo),

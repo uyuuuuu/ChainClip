@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.dependencies import get_clip_repo, get_project_repo
+from app.api.dependencies import get_access_token, get_clip_repo, get_project_repo
 from app.infra.db.repository import ClipRepo, ProjectRepo
 from app.usecase.complete_upload import complete_upload
 from app.usecase.request_upload_urls import ClipUploadRequestItem, request_upload_urls
@@ -24,7 +24,6 @@ class ClipUploadRequestBody(BaseModel):
 class RequestUploadUrlsRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    access_token: str = Field(alias="accessToken")
     clips: list[ClipUploadRequestBody]
 
 
@@ -40,6 +39,7 @@ class ClipUploadUrlResponse(BaseModel):
 async def request_upload_urls_endpoint(
     project_id: uuid.UUID,
     body: RequestUploadUrlsRequest,
+    access_token: str = Depends(get_access_token),
     project_repo: ProjectRepo = Depends(get_project_repo),
     clip_repo: ClipRepo = Depends(get_clip_repo),
 ) -> list[ClipUploadUrlResponse]:
@@ -48,7 +48,7 @@ async def request_upload_urls_endpoint(
         project_repo,
         clip_repo,
         project_id=project_id,
-        access_token=body.access_token,
+        access_token=access_token,
         clips=[
             ClipUploadRequestItem(
                 original_filename=item.original_filename,
@@ -68,11 +68,6 @@ async def request_upload_urls_endpoint(
     ]
 
 
-class CompleteUploadRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    access_token: str = Field(alias="accessToken")
-
-
 class CompleteUploadResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     clip_id: uuid.UUID = Field(alias="clipId")
@@ -82,7 +77,7 @@ class CompleteUploadResponse(BaseModel):
 @router.put("/clips/{clip_id}/upload-complete", response_model=CompleteUploadResponse)
 async def complete_upload_endpoint(
     clip_id: uuid.UUID,
-    body: CompleteUploadRequest,
+    access_token: str = Depends(get_access_token),
     project_repo: ProjectRepo = Depends(get_project_repo),
     clip_repo: ClipRepo = Depends(get_clip_repo),
 ) -> CompleteUploadResponse:
@@ -92,6 +87,6 @@ async def complete_upload_endpoint(
         project_repo,
         clip_repo,
         clip_id=clip_id,
-        access_token=body.access_token,
+        access_token=access_token,
     )
     return CompleteUploadResponse(clip_id=result.clip_id, status=result.status)
