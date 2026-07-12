@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { GradientButton } from '@/components/ui/gradientButton';
 import { Progress } from '@/components/ui/progress';
@@ -337,7 +336,7 @@ export default function ScenesScreen() {
                     nativeControls={false}
                 />
             </View>
-            <View className="h-8 mb-2 flex-row items-center justify-center">
+            <View className="h-8 mb-2 flex-row items-center justify-center gap-2">
                 {/* 再生ボタン */}
                 <Pressable onPress={togglePlay} hitSlop={8}>
                     <MaterialCommunityIcons
@@ -347,7 +346,7 @@ export default function ScenesScreen() {
                     />
                 </Pressable>
                 <View
-                    className="relative w-4/5"
+                    className="relative w-9/12"
                     onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
                 >
                     {/* 時間表示 */}
