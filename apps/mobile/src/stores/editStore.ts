@@ -6,6 +6,9 @@ export type Transform = { zoom: number; offsetX: number; offsetY: number };
 export type Cut = {
   cutId: string;
   clipId: string;
+  sceneId: string;
+  sceneStartMs: number;
+  sceneEndMs: number;
   startMs: number;
   endMs: number;
   transform: Transform;
@@ -23,6 +26,7 @@ type EditState = {
   selectedScenes: SelectedScene[];
   timeline: Cut[];
   transition: 'none' | 'fade';
+  cutSec: number;
 
   // --- 状態を変更する関数(アクション) ---
   toggleScene: (scene: SelectedScene) => void;
@@ -32,17 +36,20 @@ type EditState = {
   duplicateCut: (cutId: string) => void;
   removeCut: (cutId: string) => void;
   setTransition: (t: 'none' | 'fade') => void;
+  setCutSec: (sec: number) => void;
   reset: () => void;
 };
 
 const DEFAULT_TRANSFORM: Transform = { zoom: 1.0, offsetX: 0, offsetY: 0 };
+const DEFAULT_CUT_SEC = 3;
 
 export const useEditStore = create<EditState>()((set) => ({
   selectedScenes: [],
   timeline: [],
   transition: 'none',
+  cutSec: DEFAULT_CUT_SEC,
 
-  // シーンの選択状況
+  // シーンの選択
   toggleScene: (scene) =>
     set((s) => {
       const exists = s.selectedScenes.some((x) => x.sceneId === scene.sceneId);
@@ -59,8 +66,11 @@ export const useEditStore = create<EditState>()((set) => ({
       timeline: s.selectedScenes.map((scene) => ({
         cutId: Crypto.randomUUID(),
         clipId: scene.clipId,
+        sceneId: scene.sceneId,
+        sceneStartMs: scene.startMs,
+        sceneEndMs: scene.endMs,
         startMs: scene.startMs,
-        endMs: scene.endMs,
+        endMs: Math.min(scene.startMs + s.cutSec * 1000, scene.endMs),
         transform: { ...DEFAULT_TRANSFORM },
       })),
     })),
@@ -96,6 +106,17 @@ export const useEditStore = create<EditState>()((set) => ({
 
   setTransition: (t) => set({ transition: t }),
 
+  // カット秒数を変更し、全カットの長さを引き直す
+  setCutSec: (sec) =>
+    set((s) => ({
+      cutSec: sec,
+      timeline: s.timeline.map((c) => ({
+        ...c,
+        endMs: Math.min(c.startMs + sec * 1000, c.sceneEndMs),
+      })),
+    })),
+
   // render送信成功後や新規プロジェクト開始時に必ず呼ぶ
-  reset: () => set({ selectedScenes: [], timeline: [], transition: 'fade' }),
+  reset: () =>
+    set({ selectedScenes: [], timeline: [], transition: 'none', cutSec: DEFAULT_CUT_SEC }),
 }));
