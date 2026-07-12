@@ -7,8 +7,10 @@ import { Asset } from 'expo-asset';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, GestureResponderEvent, Image, Pressable, ScrollView, Switch, View } from 'react-native';
+import DraggableFlatList, { useOnCellActiveAnimation, type RenderItemParams } from 'react-native-draggable-flatlist';
+import Reanimated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import mov1 from '../../../../assets/videos/sample1.mp4';
@@ -99,6 +101,17 @@ const formatTime = (seconds: number): string => {
     return `${pad(h)}:${pad(m)}:${pad(s)}`;
 };
 
+// ドラッグ中に少し拡大して持ち上げる
+const CutScaleDecorator = ({ children }: { children: ReactNode }) => {
+    const { isActive, onActiveAnim } = useOnCellActiveAnimation();
+    const style = useAnimatedStyle(() => {
+        // ドラッグ中だけ 1 → 1.06 倍に拡大する
+        const scale = isActive ? interpolate(onActiveAnim.value, [0, 1], [1, 1.06]) : 1;
+        return { transform: [{ scaleX: scale }, { scaleY: scale }] };
+    }, [isActive]);
+    return <Reanimated.View style={style}>{children}</Reanimated.View>;
+};
+
 // カットの長さ表示（ミリ秒 → 00:03）
 const formatBadge = (ms: number): string => {
     const total = Math.round(ms / 1000);
@@ -119,6 +132,7 @@ export default function EditorScreen() {
     const setCutSec = useEditStore((s) => s.setCutSec);
     const duplicateCut = useEditStore((s) => s.duplicateCut);
     const removeCut = useEditStore((s) => s.removeCut);
+    const moveCut = useEditStore((s) => s.moveCut);
 
     // 遷移直後の最初のカット
     const firstCut = timeline[0];
@@ -261,7 +275,7 @@ export default function EditorScreen() {
         prepareNext();
     };
 
-    // ★次のカットを「裏」のプレーヤーに先読みしておく（動画切り替え時のラグ対策）
+    // 次のカットを「裏」のプレーヤーに先読みしておく（動画切り替え時のラグ対策）
     // いまのカットを再生している間に、裏でreplaceAsync＆シークまで済ませておくことで、
     // advance()での切り替えが「play()して手前に重ねるだけ」になり、待ち時間がなくなる
     const prepareNext = async () => {
@@ -562,6 +576,64 @@ export default function EditorScreen() {
             }
         }
     };
+    
+    // タイムラインの1カット分の描画（DraggableFlatListから呼ばれる）
+    //   item: このカットのデータ / drag: 呼ぶとドラッグが始まる関数 / isActive: いまドラッグ中かどうか / getIndex: 現在の並び位置
+    const renderCutItem = ({ item: cut, drag, isActive, getIndex }: RenderItemParams<Cut>) => {
+        const index = getIndex() ?? 0;
+        const isSelected = cut.cutId === selectedCutId;
+        const isPreviewing = cut.cutId === playingCutId && isPlaying;
+        const thumb = thumbs[thumbKey(cut)];
+        return (
+            // ドラッグ中に少し拡大
+            <CutScaleDecorator>
+                <View className="flex-row items-center">
+                    <View
+                        className={`h-[2px] w-4 ${index > 0 && !isActive ? 'bg-gray-300' : 'bg-transparent'}`}
+                    />
+                    {/* タップで選択＋そのカットから即座に再生 */}
+                    <Pressable
+                        onPress={() => handleSelectCut(cut)}
+                        disabled={isActive}
+                        className={`overflow-hidden rounded-lg border-2 ${isSelected ? 'border-primary' : 'border-transparent'}`}
+                    >
+                        {/* サムネイル（生成中はグレーのプレースホルダー） */}
+                        {thumb ? (
+                            <Image
+                                source={{ uri: thumb }}
+                                style={{ width: 80, height: 80 }}
+                                resizeMode="cover"
+                            />
+                        ) : (
+                            <View style={{ width: 80, height: 80 }} className="bg-slate-200" />
+                        )}
+                        {/* 並び替え用ハンドル: 長押しでドラッグ開始 */}
+                        <Pressable
+                            onLongPress={drag}
+                            delayLongPress={150}
+                            disabled={isActive}
+                            hitSlop={6}
+                            className="absolute right-1 top-1 rounded bg-white/80 p-0.5"
+                        >
+                            <MaterialCommunityIcons name="menu" size={14} color="#525252" />
+                        </Pressable>
+                        {/* カットの長さ */}
+                        <View className="absolute bottom-1 right-1 rounded bg-black/70 px-1">
+                            <Text className="text-[10px] text-white">
+                                {formatBadge(cut.endMs - cut.startMs)}
+                            </Text>
+                        </View>
+                        {/* プレビュー再生中のオーバーレイ */}
+                        {isPreviewing && (
+                            <View className="absolute inset-0 items-center justify-center bg-black/50">
+                                <Text className="font-bold text-white">再生中</Text>
+                            </View>
+                        )}
+                    </Pressable>
+                </View>
+            </CutScaleDecorator>
+        );
+    };
 
     // タイムライン全体の長さと進捗
     const totalMs = timeline.reduce((sum, c) => sum + (c.endMs - c.startMs), 0);
@@ -623,9 +695,17 @@ export default function EditorScreen() {
 
             {/* ビデオプレーヤー */}
             <View
-                className="bg-black mx-10 mb-2 aspect-square overflow-hidden rounded-xl"
-                onLayout={(e) => setPlayerSize(e.nativeEvent.layout.width)}
+                className="flex-1 items-center justify-center"
+                    onLayout={(e) => {
+                    const { width, height } = e.nativeEvent.layout;
+                        // 横は左右の余白(24pxずつ)を引いた幅まで、縦は使える高さまで。小さい方に合わせる
+                    setPlayerSize(Math.max(0, Math.floor(Math.min(width - 48, height))));
+                    }}
             >
+                <View
+                    className="bg-black overflow-hidden rounded-xl"
+                    style={{ width: playerSize, height: playerSize }}
+                >
                 {(['A', 'B'] as const).map((key) => {
                     const layout = videoLayoutFor(shownCuts[key], playerSize);
                     return (
@@ -658,7 +738,8 @@ export default function EditorScreen() {
                     );
                 })}
             </View>
-            <View className="h-8 mb-2 flex-row items-center justify-center gap-2">
+            </View>
+            <View className="h-8 my-2 flex-row items-center justify-center gap-2">
                 {/* 再生ボタン */}
                 <Pressable onPress={togglePlay} hitSlop={8}>
                     <MaterialCommunityIcons
@@ -766,81 +847,48 @@ export default function EditorScreen() {
                 )}
             </View>
 
-            <ScrollView className="flex-1" contentContainerClassName="pb-8">
+            <View className="pb-2">
                 {/* 並び替えヒント */}
                 <Text className="mt-2 px-6 text-right text-[11px] text-gray-400">
                     ハンドルを掴んで並び替えられます
                 </Text>
 
-                {/* タイムライン（横スクロール） */}
-                <ScrollView
+                 {/* タイムライン */}
+                <DraggableFlatList
                     horizontal
-                    className="mt-1 grow-0"
-                    contentContainerClassName="items-center px-4 py-2"
-                >
-                    {timeline.map((cut, i) => {
-                        const isSelected = cut.cutId === selectedCutId;
-                        const isPreviewing = cut.cutId === playingCutId && isPlaying;
-                        const thumb = thumbs[thumbKey(cut)];
-                        return (
-                            <Fragment key={cut.cutId}>
-                                {/* カット間のつなぎ線 */}
-                                {i > 0 && <View className="h-[2px] w-4 bg-gray-300" />}
-                                {/* タップで選択（水色のborder＋下に詳細カード表示） */}
-                                <Pressable
-                                    onPress={() => handleSelectCut(cut)}
-                                    className={`overflow-hidden rounded-lg border-2 ${isSelected ? 'border-primary' : 'border-transparent'}`}
-                                >
-                                    {/* サムネイル（生成中はグレーのプレースホルダー） */}
-                                    {thumb ? (
-                                        <Image
-                                            source={{ uri: thumb }}
-                                            style={{ width: 92, height: 92 }}
-                                            resizeMode="cover"
-                                        />
-                                    ) : (
-                                        <View style={{ width: 92, height: 92 }} className="bg-slate-200" />
-                                    )}
-                                    {/* 並び替え用ハンドル */}
-                                    {/* TODO: react-native-draggable-flatlist等を導入して、
-                                        onDragEndでstoreのmoveCut(from, to)を呼ぶ。今は見た目のみ */}
-                                    <View className="absolute right-1 top-1 rounded bg-white/80 p-0.5">
-                                        <MaterialCommunityIcons name="menu" size={14} color="#525252" />
-                                    </View>
-                                    {/* カットの長さ */}
-                                    <View className="absolute bottom-1 right-1 rounded bg-black/70 px-1">
-                                        <Text className="text-[10px] text-white">
-                                            {formatBadge(cut.endMs - cut.startMs)}
-                                        </Text>
-                                    </View>
-                                    {/* プレビュー再生中のオーバーレイ */}
-                                    {isPreviewing && (
-                                        <View className="absolute inset-0 items-center justify-center bg-black/50">
-                                            <Text className="font-bold text-white">再生中</Text>
-                                        </View>
-                                    )}
-                                </Pressable>
-                            </Fragment>
-                        );
-                    })}
-                </ScrollView>
+                    data={timeline}
+                    keyExtractor={(c) => c.cutId}
+                    renderItem={renderCutItem}
+                    // ドラッグを離した時に呼ばれる。storeの並び順を更新する
+                    onDragEnd={({ from, to }) => moveCut(from, to)}
+                    // FlatListはdata(timeline)が変わった時しか各行を再描画しない。
+                    // data以外の値の変化も反映させるために渡す
+                    extraData={[selectedCutId, playingCutId, isPlaying, thumbs]}
+                    showsHorizontalScrollIndicator={false}
+                    style={{ flexGrow: 0, marginTop: 4 }}
+                    contentContainerStyle={{
+                        alignItems: 'center',
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                    }}
+                />
 
                 {/* 選択中カットの詳細カード */}
                 {selectedCut && (
-                    <View className="mx-4 mt-8 gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-md shadow-gray-100">
+                    <View className="mx-4 mt-4 gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-md shadow-gray-100">
                         <View className="flex-row items-center gap-3">
                             {/* サムネイル */}
                             <View className="relative">
                                 {thumbs[thumbKey(selectedCut)] ? (
                                     <Image
                                         source={{ uri: thumbs[thumbKey(selectedCut)] }}
-                                        style={{ width: 96, height: 96 }}
+                                        style={{ width: 84, height: 84 }}
                                         className="rounded-md"
                                         resizeMode="cover"
                                     />
                                 ) : (
                                     <View
-                                        style={{ width: 96, height: 96 }}
+                                        style={{ width: 84, height: 84 }}
                                         className="rounded-md bg-slate-200"
                                     />
                                 )}
@@ -902,7 +950,7 @@ export default function EditorScreen() {
                         </View>
                     </View>
                 )}
-            </ScrollView>
+            </View>
         </SafeAreaView>
     );
 }
