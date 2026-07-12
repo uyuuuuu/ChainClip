@@ -5,11 +5,13 @@ export function GradientButton({
   label,
   onPress,
   style,       // ボタン全体（入れ物）のスタイル
+  buttonStyle, // ボタンのスタイル
   textStyle,   // 文字のスタイル
 }: {
   label: string;
   onPress: () => void;
-  style?: StyleProp<ViewStyle>;      // ? は「渡さなくてもOK」の意味
+  style?: StyleProp<ViewStyle>; 
+  buttonStyle?: StyleProp<ViewStyle>; 
   textStyle?: StyleProp<TextStyle>;
 }) {
   return (
@@ -18,12 +20,16 @@ export function GradientButton({
         colors={["#00D5FF", "#00E6E6"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={{
-          borderRadius: 6,
-          paddingHorizontal: 24,
-          paddingVertical: 12,
-          alignItems: "center",
-        }}
+        style={[
+          {
+            borderRadius: 6,
+            paddingHorizontal: 24,
+            paddingVertical: 12,
+            alignItems: "center",
+            justifyContent: "center", 
+          },
+          buttonStyle,
+        ]}
       >
         <Text style={[{ color: "white", fontWeight: "bold" }, textStyle]}>
           {label}

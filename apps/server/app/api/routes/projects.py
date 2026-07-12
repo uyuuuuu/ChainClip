@@ -78,12 +78,6 @@ class TransformRequest(BaseModel):
     offset_y: float = Field(alias="offsetY")
 
 
-class TransitionRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    type: Literal["none", "fade"]
-    duration_ms: int = Field(alias="durationMs")
-
-
 class TimelineCutRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     cut_id: str = Field(alias="cutId")
@@ -92,21 +86,12 @@ class TimelineCutRequest(BaseModel):
     start_ms: int = Field(alias="startMs")
     end_ms: int = Field(alias="endMs")
     transform: TransformRequest
-    transition_to_next: TransitionRequest | None = Field(default=None, alias="transitionToNext")
-
-
-class OutputConfigRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-    aspect_ratio: Literal["9:16", "1:1", "3:4", "4:5", "16:9"] = Field(alias="aspectRatio")
-    width: int
-    height: int
-    fps: int
 
 
 class EditConfigRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     version: int
-    output: OutputConfigRequest
+    transition: Literal["none", "fade"]
     timeline: list[TimelineCutRequest]
 
 
@@ -178,6 +163,8 @@ class GetProjectStatusResponse(BaseModel):
     error_phase: str | None = Field(default=None, alias="errorPhase")
     error_code: str | None = Field(default=None, alias="errorCode")
     error_message: str | None = Field(default=None, alias="errorMessage")
+    share_url: str | None = Field(default=None, alias="shareUrl")
+    final_video_url: str | None = Field(default=None, alias="finalVideoUrl")
 
 
 @router.get("/{project_id}", response_model=GetProjectStatusResponse)
@@ -227,4 +214,6 @@ async def get_project_status_endpoint(
         error_phase=result.error_phase,
         error_code=result.error_code,
         error_message=result.error_message,
+        share_url=result.share_url,
+        final_video_url=result.final_video_url,
     )
