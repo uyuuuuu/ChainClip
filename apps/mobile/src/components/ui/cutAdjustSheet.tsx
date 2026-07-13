@@ -1,0 +1,528 @@
+import { Text } from '@/components/ui/text';
+import { CLIP_MAP } from '@/lib/mockClips';
+import { useEditStore, type Cut, type Transform } from '@/stores/editStore';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { Asset } from 'expo-asset';
+import { VideoView, useVideoPlayer } from 'expo-video';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, Modal, Pressable, ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+
+/* 定数 */
+const FRAME_W = 150;        // 中央固定の水色フレームの幅(px)。「カットの長さ(ms) = この幅」という縮尺になる
+const FILM_H = 56;          // フィルムストリップの高さ
+const FILM_THUMB_W = 48;    // フィルムストリップ内のサムネ1枚の幅
+const MAX_FILM_THUMBS = 30; // サムネ生成枚数の上限（生成が重いため）
+const ZOOM_MIN = 1;         // 1.0 = 元フレームに収まる最大範囲（設計mdの定義どおり）
+const ZOOM_MAX = 3;
+const PLAYER_H = 230;       // 中部プレーヤーの高さ
+
+// editor.tsx と同じサムネキー（editorで生成済みのサムネを使い回すため）
+const thumbKey = (cut: { clipId: string; startMs: number }) => `${cut.clipId}:${cut.startMs}`;
+
+// ミリ秒 → 00:00:00
+const formatClock = (ms: number): string => {
+    const total = Math.floor(ms / 1000);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
+};
+
+// ミリ秒 → 00:03（カットの長さバッジ）
+const formatBadge = (ms: number): string => {
+    const total = Math.round(ms / 1000);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(m)}:${pad(s)}`;
+};
+
+const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+
+type Props = {
+    initialCutId: string;                 // 開いた時に編集対象にするカット
+    thumbs: Record<string, string>;       // editorで生成済みのサムネ（上部タイムラインに使う）
+    muted?: boolean;                      // editor側のミュート設定を引き継ぐ
+    onClose: (lastCutId: string) => void; // 閉じる時に「最後に編集していたカットID」を返す
+};
+
+export default function CutAdjustSheet({ initialCutId, thumbs, muted, onClose }: Props) {
+    const timeline = useEditStore((s) => s.timeline);
+
+    // いま編集対象になっているカット
+    const [currentCutId, setCurrentCutId] = useState(initialCutId);
+    const currentCut = timeline.find((c) => c.cutId === currentCutId) ?? null;
+
+    return (
+        // transparent + animationType="slide" で「下からシートが出てくる」見た目になる。
+        // Modalの間は背面（editor.tsx）のUIはタップできない = 要件の「元のUIはどれも動作しない」
+        <Modal visible transparent animationType="slide" onRequestClose={() => onClose(currentCutId)}>
+            {/* Modalは別のネイティブ画面扱いなので、中でジェスチャーを使うにはRootViewをもう1つ置く */}
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <View className="flex-1 justify-end">
+                    {/* シートの上の暗い部分。タップでも閉じられる */}
+                    <Pressable className="flex-1 bg-black/30" onPress={() => onClose(currentCutId)} />
+
+                    <View className="rounded-t-3xl bg-white pb-10 pt-1">
+                        {/* 閉じる（下向き矢印） */}
+                        <Pressable
+                            onPress={() => onClose(currentCutId)}
+                            className="items-center py-1"
+                            hitSlop={8}
+                        >
+                            <MaterialCommunityIcons name="chevron-down" size={30} color="#262626" />
+                        </Pressable>
+                        <Text className="text-center text-base font-bold">切り抜き箇所を調整</Text>
+
+                        {/* ===== 上部: カットのタイムライン ===== */}
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator
+                            style={{ flexGrow: 0 }}
+                            contentContainerStyle={{
+                                paddingHorizontal: 16,
+                                paddingVertical: 10,
+                                alignItems: 'center',
+                            }}
+                        >
+                            {timeline.map((cut, i) => {
+                                const selected = cut.cutId === currentCutId;
+                                const uri = thumbs[thumbKey(cut)];
+                                return (
+                                    <View key={cut.cutId} className="flex-row items-center">
+                                        {i > 0 && <View className="h-[2px] w-4 bg-gray-300" />}
+                                        <Pressable
+                                            // 別カットを選ぶ → 下のCutEditorが作り直され、
+                                            // その「アンマウント」のタイミングで今の編集が保存される
+                                            onPress={() => setCurrentCutId(cut.cutId)}
+                                            className={`overflow-hidden rounded-lg border-2 ${
+                                                selected ? 'border-primary' : 'border-transparent'
+                                            }`}
+                                        >
+                                            {uri ? (
+                                                <Image
+                                                    source={{ uri }}
+                                                    style={{ width: 64, height: 64 }}
+                                                    resizeMode="cover"
+                                                />
+                                            ) : (
+                                                <View style={{ width: 64, height: 64 }} className="bg-slate-200" />
+                                            )}
+                                            <View className="absolute bottom-1 right-1 rounded bg-black/70 px-1">
+                                                <Text className="text-[10px] text-white">
+                                                    {formatBadge(cut.endMs - cut.startMs)}
+                                                </Text>
+                                            </View>
+                                        </Pressable>
+                                    </View>
+                                );
+                            })}
+                        </ScrollView>
+
+                        {/* ===== 中部+下部: 選択中カットの編集 =====
+                            key={cutId} がポイント。カットが切り替わるたびにコンポーネントごと
+                            作り直される（＝前のカットの状態が確実にリセットされ、保存も走る） */}
+                        {currentCut ? (
+                            <CutEditor key={currentCut.cutId} cut={currentCut} muted={muted} />
+                        ) : (
+                            <Text className="py-10 text-center text-gray-400">カットがありません</Text>
+                        )}
+                    </View>
+                </View>
+            </GestureHandlerRootView>
+        </Modal>
+    );
+}
+
+// カット編集
+function CutEditor({ cut, muted }: { cut: Cut; muted?: boolean }) {
+    const updateCut = useEditStore((s) => s.updateCut);
+
+    const clip = CLIP_MAP[cut.clipId];
+    // このカットが属するシーン（フィルムストリップで動かせる範囲になる）
+    const scene = clip?.scenes.find((sc) => sc.sceneId === cut.sceneId);
+    const sceneStart = scene?.startMs ?? 0;
+    const sceneEnd = scene?.endMs ?? clip?.durationMs ?? cut.endMs;
+    const cutLen = Math.max(cut.endMs - cut.startMs, 1); // カットの長さは固定（位置だけ動かす）
+
+    // 編集中のドラフト値
+    const [startMs, setStartMs] = useState(cut.startMs);
+    const [transform, setTransform] = useState<Transform>({ ...cut.transform });
+
+    // イベントリスナーやアンマウント時に「最新の値」を読むためのref。
+    // （リスナーは登録した瞬間のstateを覚えてしまうので、refを経由して読む）
+    const startMsRef = useRef(cut.startMs);
+    const transformRef = useRef<Transform>({ ...cut.transform });
+
+    const applyStartMs = (v: number) => {
+        startMsRef.current = v;
+        setStartMs(v);
+    };
+
+    // 切り抜き枠が動画からはみ出さないようにzoom/offsetを丸める
+    const clampTransform = (t: Transform): Transform => {
+        const zoom = clamp(t.zoom, ZOOM_MIN, ZOOM_MAX);
+        if (!clip) return { zoom, offsetX: 0, offsetY: 0 };
+        const side = Math.min(clip.width, clip.height) / zoom; // 切り抜き正方形の一辺(動画px)
+        const maxX = (clip.width - side) / (2 * clip.width);
+        const maxY = (clip.height - side) / (2 * clip.height);
+        return {
+            zoom,
+            offsetX: clamp(t.offsetX, -maxX, maxX),
+            offsetY: clamp(t.offsetY, -maxY, maxY),
+        };
+    };
+
+    const applyTransform = (t: Transform) => {
+        const c = clampTransform(t);
+        transformRef.current = c;
+        setTransform(c);
+    };
+
+    // カット位置、表示位置の保存
+    useEffect(() => {
+        return () => {
+            const s = clamp(startMsRef.current, sceneStart, Math.max(sceneEnd - cutLen, sceneStart));
+            updateCut(cut.cutId, {
+                startMs: s,
+                endMs: s + cutLen,
+                transform: transformRef.current,
+            });
+        };
+        // アンマウント時の1回だけでよいので依存配列は空
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // ビデオプレーヤー
+    const player = useVideoPlayer(clip?.video ?? null, (p) => {
+        p.timeUpdateEventInterval = 0.1; // ループの折り返しを細かく判定したいので短めに
+        p.loop = false; // 「動画ファイル全体のループ」ではなく「カット範囲のループ」を自前で行う
+        p.muted = !!muted;
+    });
+
+    // フレーム内の再生位置（0〜1）。下のフィルムストリップの再生ラインに使う
+    const [playheadRatio, setPlayheadRatio] = useState(0);
+
+    useEffect(() => {
+        const subs = [
+            // 読み込み完了 → カットの先頭へシークして自動再生
+            player.addListener('statusChange', ({ status }) => {
+                if (status === 'readyToPlay') {
+                    player.currentTime = startMsRef.current / 1000;
+                    player.play();
+                }
+            }),
+            // カットの終端に達したら先頭へ戻す(=ループ)。次のカットへは進まない
+            player.addListener('timeUpdate', ({ currentTime }) => {
+                const startSec = startMsRef.current / 1000;
+                const endSec = (startMsRef.current + cutLen) / 1000;
+                if (currentTime >= endSec || currentTime < startSec - 0.3) {
+                    // 範囲外（終端に達した / スクロールで範囲が動いた）→ 先頭へ
+                    player.currentTime = startSec;
+                    return;
+                }
+                setPlayheadRatio(clamp((currentTime - startSec) / (endSec - startSec), 0, 1));
+            }),
+            // 動画ファイル自体の終端に達した場合の保険（カットの終わり＝動画の終わりのケース）
+            player.addListener('playToEnd', () => {
+                player.currentTime = startMsRef.current / 1000;
+                player.play();
+            }),
+        ];
+        return () => subs.forEach((s) => s.remove());
+        // リスナー内ではref経由で最新値を読むので、登録は初回の1回だけでよい
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // まれに登録前にreadyToPlayになっていた場合の保険
+    useEffect(() => {
+        if (player.status === 'readyToPlay') {
+            player.currentTime = startMsRef.current / 1000;
+            player.play();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    /* プレーヤーの表示計算  */
+    const [box, setBox] = useState({ w: 0, h: 0 }); // 黒いコンテナの実サイズ
+
+    // 動画全体をコンテナに収めた(contain)時の描画サイズと位置
+    const fit = useMemo(() => {
+        if (!clip || !box.w || !box.h) return null;
+        const scale = Math.min(box.w / clip.width, box.h / clip.height);
+        return {
+            scale,
+            w: clip.width * scale,
+            h: clip.height * scale,
+            x: (box.w - clip.width * scale) / 2,
+            y: (box.h - clip.height * scale) / 2,
+        };
+    }, [clip, box]);
+
+    // transform（zoom/offset）→ 画面上の切り抜き枠の位置・サイズ
+    // ※ editor.tsx の videoLayoutFor と同じ定義式を使っているので、
+    //   ここで保存した transform はそのままプレビューとrenderリクエストに使える
+    const frame = useMemo(() => {
+        if (!clip || !fit) return null;
+        const side = Math.min(clip.width, clip.height) / transform.zoom;
+        const left = (0.5 + transform.offsetX) * clip.width - side / 2;
+        const top = (0.5 + transform.offsetY) * clip.height - side / 2;
+        return {
+            side: side * fit.scale,
+            left: fit.x + left * fit.scale,
+            top: fit.y + top * fit.scale,
+        };
+    }, [clip, fit, transform]);
+
+    /* ---------- ジェスチャー（ドラッグ=位置 / ピンチ=サイズ） ---------- */
+    // ジェスチャー開始時点の値。「開始時からどれだけ動いたか」で計算するとズレない
+    const gestureBase = useRef<Transform>({ ...cut.transform });
+
+    const panGesture = Gesture.Pan()
+        .runOnJS(true) // コールバックを普通のJS関数として実行する（setStateがそのまま呼べて簡単）
+        .onStart(() => {
+            gestureBase.current = { ...transformRef.current };
+        })
+        .onUpdate((e) => {
+            if (!clip || !fit) return;
+            // 指の移動量(画面px) → 動画に対する正規化座標に変換して枠を動かす
+            applyTransform({
+                zoom: transformRef.current.zoom,
+                offsetX: gestureBase.current.offsetX + e.translationX / (fit.scale * clip.width),
+                offsetY: gestureBase.current.offsetY + e.translationY / (fit.scale * clip.height),
+            });
+        });
+
+    const pinchGesture = Gesture.Pinch()
+        .runOnJS(true)
+        .onStart(() => {
+            gestureBase.current = { ...transformRef.current };
+        })
+        .onUpdate((e) => {
+            // ピンチアウト(scale>1) → 枠が大きくなる = 写る範囲が広がる = zoomは小さくなる
+            applyTransform({ ...transformRef.current, zoom: gestureBase.current.zoom / e.scale });
+        });
+
+    // ドラッグとピンチを同時に受け付ける
+    const gesture = Gesture.Simultaneous(panGesture, pinchGesture);
+
+    /* ---------- 下部: フィルムストリップの計算 ----------
+       縮尺の決め方: 「カットの長さ(ms)」が「フレーム幅(FRAME_W px)」になるようにする。
+       するとシーン全体の帯の幅が自動的に決まり、
+       スクロール量(px) ÷ pxPerMs = カット開始位置のズレ(ms) になる */
+    const sceneLen = Math.max(sceneEnd - sceneStart, cutLen);
+    const pxPerMs = FRAME_W / cutLen;
+    const stripW = sceneLen * pxPerMs;                    // シーン全体の帯の幅
+    const maxScrollX = Math.max(stripW - FRAME_W, 0);     // スクロールできる最大量
+
+    const [stripBoxW, setStripBoxW] = useState(0);        // 帯エリアの実際の幅(px)
+    const sidePad = Math.max((stripBoxW - FRAME_W) / 2, 0); // フレームを中央に置くための左右余白
+
+    // スクロール量 → カットの開始位置（フレームは固定で、帯の方が動く）
+    const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        const x = clamp(e.nativeEvent.contentOffset.x, 0, maxScrollX);
+        applyStartMs(Math.round(sceneStart + x / pxPerMs));
+    };
+    // スクロールが止まったら、新しい開始位置へシークして続きを再生
+    const handleScrollEnd = () => {
+        player.currentTime = startMsRef.current / 1000;
+    };
+
+    /* フィルムストリップ用サムネイル生成 */
+    const thumbCount = Math.min(Math.ceil(stripW / FILM_THUMB_W), MAX_FILM_THUMBS);
+    const [filmThumbs, setFilmThumbs] = useState<(string | null)[]>([]);
+
+    useEffect(() => {
+        let cancelled = false; // 画面を離れた後にsetStateしないためのフラグ
+        (async () => {
+            if (!clip) return;
+            try {
+                // require()したローカル動画はAsset経由でURIに解決する。
+                // サーバー接続後はsigned URLをそのまま渡せるので、この2行は不要
+                const asset = Asset.fromModule(clip.video);
+                await asset.downloadAsync();
+                const videoUri = asset.localUri ?? asset.uri;
+
+                const arr: (string | null)[] = new Array(thumbCount).fill(null);
+                for (let i = 0; i < thumbCount; i++) {
+                    // サムネi枚目の左端が指す時刻
+                    const timeMs = Math.round(
+                        sceneStart + Math.min((i * FILM_THUMB_W) / pxPerMs, sceneLen - 1)
+                    );
+                    const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, { time: timeMs });
+                    if (cancelled) return;
+                    arr[i] = uri;
+                    setFilmThumbs([...arr]); // 生成できた分から順に表示する
+                }
+            } catch (e) {
+                console.warn('フィルムストリップのサムネ生成に失敗:', e);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+        // このコンポーネントはカットごとに作り直されるので、初回1回だけでよい
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    if (!clip) {
+        return <Text className="py-10 text-center text-gray-400">動画が見つかりません</Text>;
+    }
+
+    // 開いた瞬間のスクロール位置（= 現在のカット開始位置がフレーム内に来る位置）
+    const initialScrollX = clamp((cut.startMs - sceneStart) * pxPerMs, 0, maxScrollX);
+
+    return (
+        <View>
+            {/* ビデオプレーヤー */}
+            <GestureDetector gesture={gesture}>
+                <View
+                    className="mx-4 overflow-hidden rounded-lg bg-black"
+                    style={{ height: PLAYER_H }}
+                    onLayout={(e) =>
+                        setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })
+                    }
+                >
+                    {fit && (
+                        <VideoView
+                            player={player}
+                            style={{
+                                position: 'absolute',
+                                left: fit.x,
+                                top: fit.y,
+                                width: fit.w,
+                                height: fit.h,
+                            }}
+                            // サイズは縦横比を保ってこちらで計算済みなので、styleどおりに広げる
+                            contentFit="fill"
+                            nativeControls={false}
+                        />
+                    )}
+                    {/* 切り抜き枠（1:1で出力される範囲） */}
+                    {frame && (
+                        <View
+                            pointerEvents="none"
+                            style={{
+                                position: 'absolute',
+                                left: frame.left,
+                                top: frame.top,
+                                width: frame.side,
+                                height: frame.side,
+                            }}
+                        >
+                            <View className="absolute inset-0 rounded-sm border border-white/80" />
+                            {/* 四隅のかぎマーク */}
+                            {(
+                                [
+                                    { left: 0, top: 0, borderLeftWidth: 3, borderTopWidth: 3 },
+                                    { right: 0, top: 0, borderRightWidth: 3, borderTopWidth: 3 },
+                                    { left: 0, bottom: 0, borderLeftWidth: 3, borderBottomWidth: 3 },
+                                    { right: 0, bottom: 0, borderRightWidth: 3, borderBottomWidth: 3 },
+                                ] as const
+                            ).map((s, i) => (
+                                <View
+                                    key={i}
+                                    style={{
+                                        position: 'absolute',
+                                        width: 18,
+                                        height: 18,
+                                        borderColor: '#171717',
+                                        ...s,
+                                    }}
+                                />
+                            ))}
+                        </View>
+                    )}
+                </View>
+            </GestureDetector>
+            <Text className="mt-1 text-center text-[10px] text-gray-400">
+                ドラッグで位置、ピンチでサイズを調整できます
+            </Text>
+
+            {/*  カット位置の調整 */}
+            <View className="mx-4 mt-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-md shadow-gray-100">
+                {/* 現在のカット開始位置 */}
+                <Text className="text-center text-[11px] text-gray-500">{formatClock(startMs)}</Text>
+                <View
+                    className="mt-1"
+                    style={{ height: FILM_H + 16 }}
+                    onLayout={(e) => setStripBoxW(e.nativeEvent.layout.width)}
+                >
+                    {/* 実幅が分かってから描画する（先に描くと余白計算がズレるため） */}
+                    {stripBoxW > 0 && (
+                        <>
+                            <ScrollView
+                                horizontal
+                                bounces={false}
+                                showsHorizontalScrollIndicator
+                                scrollEventThrottle={16}
+                                onScroll={handleScroll}
+                                onScrollEndDrag={handleScrollEnd}
+                                onMomentumScrollEnd={handleScrollEnd}
+                                // iOSは contentOffset で初期スクロール位置を指定できる
+                                contentOffset={{ x: initialScrollX, y: 0 }}
+                                contentContainerStyle={{
+                                    paddingHorizontal: sidePad,
+                                    paddingVertical: 8,
+                                }}
+                            >
+                                {/* シーン全体のサムネの帯 */}
+                                <View
+                                    className="flex-row overflow-hidden rounded-md bg-slate-200"
+                                    style={{ width: stripW, height: FILM_H }}
+                                >
+                                    {Array.from({ length: thumbCount }).map((_, i) =>
+                                        filmThumbs[i] ? (
+                                            <Image
+                                                key={i}
+                                                source={{ uri: filmThumbs[i]! }}
+                                                style={{ width: FILM_THUMB_W, height: FILM_H }}
+                                                resizeMode="cover"
+                                            />
+                                        ) : (
+                                            <View
+                                                key={i}
+                                                style={{ width: FILM_THUMB_W, height: FILM_H }}
+                                                className="bg-slate-300"
+                                            />
+                                        )
+                                    )}
+                                </View>
+                            </ScrollView>
+
+                            {/* 中央固定の水色フレーム = カットになる範囲 */}
+                            <View
+                                pointerEvents="none"
+                                style={{
+                                    position: 'absolute',
+                                    left: sidePad - 3,
+                                    top: 5,
+                                    width: FRAME_W + 6,
+                                    height: FILM_H + 6,
+                                    borderWidth: 3,
+                                    borderColor: '#22d3ee',
+                                    borderRadius: 8,
+                                }}
+                            />
+                            {/* ループ再生の現在位置ライン */}
+                            <View
+                                pointerEvents="none"
+                                style={{
+                                    position: 'absolute',
+                                    left: sidePad + playheadRatio * FRAME_W - 1,
+                                    top: 0,
+                                    width: 2,
+                                    height: FILM_H + 16,
+                                    backgroundColor: '#0891b2',
+                                }}
+                            />
+                        </>
+                    )}
+                </View>
+            </View>
+        </View>
+    );
+}

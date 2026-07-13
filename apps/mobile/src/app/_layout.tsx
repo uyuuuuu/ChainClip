@@ -1,10 +1,10 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router/react-navigation';
 import { PortalHost } from '@rn-primitives/portal';
-import { Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Stack } from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router/react-navigation';
 import { useColorScheme } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '../global.css';
 
 const queryClient = new QueryClient();
