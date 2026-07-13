@@ -1,53 +1,20 @@
+import CutAdjustSheet from '@/components/ui/cutAdjustSheet';
 import { GradientButton } from '@/components/ui/gradientButton';
 import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
+import { CLIP_MAP } from '@/lib/mockClips';
 import { useEditStore, type Cut } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Asset } from 'expo-asset';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, GestureResponderEvent, Image, Pressable, ScrollView, Switch, View } from 'react-native';
+import { Animated, GestureResponderEvent, Image, Pressable, Switch, View } from 'react-native';
 import DraggableFlatList, { useOnCellActiveAnimation, type RenderItemParams } from 'react-native-draggable-flatlist';
 import Reanimated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-import mov1 from '../../../../assets/videos/sample1.mp4';
-import mov2 from '../../../../assets/videos/sample2.mp4';
-const CLIPS = [
-    {
-        clipId: 'clip-1',
-        clipIndex: 0,
-        durationMs: 14000,
-        width: 1920,
-        height: 1080,
-        video: mov1, // 本来は { url: 'https://...signed...', expiresAt: '...' }
-        scenes: [
-            { sceneId: 'scene-1', sceneIndex: 0, startMs: 0, endMs: 3200, labels: ['Building', 'Tree', 'mountain'] },
-            { sceneId: 'scene-2', sceneIndex: 1, startMs: 3200, endMs: 8500, labels: ['mountain'] },
-            { sceneId: 'scene-3', sceneIndex: 2, startMs: 8500, endMs: 14000, labels: ['Building'] },
-        ],
-    },
-    {
-        clipId: 'clip-2',
-        clipIndex: 1,
-        durationMs: 13000,
-        width: 1080,
-        height: 1080,
-        video: mov2,
-        scenes: [
-            { sceneId: 'scene-4', sceneIndex: 0, startMs: 0, endMs: 4000, labels: ['Tree', 'Person', 'Dog'] },
-            { sceneId: 'scene-5', sceneIndex: 1, startMs: 4000, endMs: 13000, labels: ['Dog'] },
-        ],
-    },
-];
-
-// clipId → clip を素早く引けるようにした対応表
-const CLIP_MAP = Object.fromEntries(CLIPS.map((c) => [c.clipId, c])) as Record<
-    string,
-    (typeof CLIPS)[number]
->;
 
 // フェードにかける時間
 const FADE_MS = 180;
@@ -177,6 +144,8 @@ export default function EditorScreen() {
     const [playingCutId, setPlayingCutId] = useState<string | null>(firstCut?.cutId ?? null);
     // タップで選択中のカット（下に詳細カードが出る）。初期値は一番左のカット
     const [selectedCutId, setSelectedCutId] = useState<string | null>(firstCut?.cutId ?? null);
+    // カット編集シートの表示
+    const [showCropSheet, setShowCropSheet] = useState(false);
 
     // イベントリスナーから最新値を読むためのref
     const timelineRef = useRef(timeline);
@@ -541,6 +510,28 @@ export default function EditorScreen() {
         showCutOnActive(cut, { autoplay: true });
     };
 
+    const handleOpenCropSheet = () => {
+        if (!selectedCut) return;
+        getPlayer(activeKeyRef.current).pause(); // 背面のプレビューを止めてから開く
+        setShowCropSheet(true);
+    };
+
+    const handleCloseCropSheet = (lastCutId: string) => {
+        setShowCropSheet(false);
+        setSelectedCutId(lastCutId); // シートで最後に触っていたカットを選択状態にする
+
+        // シートが閉じる(アンマウントされる)時に編集内容がstoreへ保存されるので、
+        // setTimeoutで「保存が終わった後」に最新のカットをプレビューへ読み込み直す
+        setTimeout(() => {
+            const list = useEditStore.getState().timeline;
+            const idx = list.findIndex((c) => c.cutId === lastCutId);
+            if (idx === -1) return;
+            const beforeMs = list.slice(0, idx).reduce((sum, c) => sum + (c.endMs - c.startMs), 0);
+            setElapsedMs(beforeMs);
+            showCutOnActive(list[idx], { autoplay: false });
+        }, 0);
+    };
+
     // 複製: storeが選択カットの直後に同じ内容(別cutId)を挿入
     const handleDuplicate = () => {
         if (!selectedCut) return;
@@ -576,7 +567,7 @@ export default function EditorScreen() {
             }
         }
     };
-    
+
     // タイムラインの1カット分の描画（DraggableFlatListから呼ばれる）
     //   item: このカットのデータ / drag: 呼ぶとドラッグが始まる関数 / isActive: いまドラッグ中かどうか / getIndex: 現在の並び位置
     const renderCutItem = ({ item: cut, drag, isActive, getIndex }: RenderItemParams<Cut>) => {
@@ -696,48 +687,48 @@ export default function EditorScreen() {
             {/* ビデオプレーヤー */}
             <View
                 className="flex-1 items-center justify-center"
-                    onLayout={(e) => {
+                onLayout={(e) => {
                     const { width, height } = e.nativeEvent.layout;
-                        // 横は左右の余白(24pxずつ)を引いた幅まで、縦は使える高さまで。小さい方に合わせる
+                    // 横は左右の余白(24pxずつ)を引いた幅まで、縦は使える高さまで。小さい方に合わせる
                     setPlayerSize(Math.max(0, Math.floor(Math.min(width - 48, height))));
-                    }}
+                }}
             >
                 <View
                     className="bg-black overflow-hidden rounded-xl"
                     style={{ width: playerSize, height: playerSize }}
                 >
-                {(['A', 'B'] as const).map((key) => {
-                    const layout = videoLayoutFor(shownCuts[key], playerSize);
-                    return (
-                        <Animated.View
-                            key={key}
-                            style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                opacity: opacity[key],
-                                zIndex: activeKey === key ? 2 : 1, // 表のプレーヤーを手前に
-                            }}
-                        >
-                            <VideoView
-                                player={getPlayer(key)}
+                    {(['A', 'B'] as const).map((key) => {
+                        const layout = videoLayoutFor(shownCuts[key], playerSize);
+                        return (
+                            <Animated.View
+                                key={key}
                                 style={{
                                     position: 'absolute',
-                                    width: layout.width,
-                                    height: layout.height,
-                                    left: layout.left,
-                                    top: layout.top,
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    opacity: opacity[key],
+                                    zIndex: activeKey === key ? 2 : 1, // 表のプレーヤーを手前に
                                 }}
-                                // サイズは縦横比を保ってこちらで計算済みなので、styleどおりに広げる
-                                contentFit="fill"
-                                nativeControls={false}
-                            />
-                        </Animated.View>
-                    );
-                })}
-            </View>
+                            >
+                                <VideoView
+                                    player={getPlayer(key)}
+                                    style={{
+                                        position: 'absolute',
+                                        width: layout.width,
+                                        height: layout.height,
+                                        left: layout.left,
+                                        top: layout.top,
+                                    }}
+                                    // サイズは縦横比を保ってこちらで計算済みなので、styleどおりに広げる
+                                    contentFit="fill"
+                                    nativeControls={false}
+                                />
+                            </Animated.View>
+                        );
+                    })}
+                </View>
             </View>
             <View className="h-8 my-2 flex-row items-center justify-center gap-2">
                 {/* 再生ボタン */}
@@ -853,7 +844,7 @@ export default function EditorScreen() {
                     ハンドルを掴んで並び替えられます
                 </Text>
 
-                 {/* タイムライン */}
+                {/* タイムライン */}
                 <DraggableFlatList
                     horizontal
                     data={timeline}
@@ -913,14 +904,10 @@ export default function EditorScreen() {
                             </View>
                         </View>
 
-                        {/* 切りぬきを調整 → 4. カット編集画面(シート)を開く */}
+                        {/* 切りぬきを調整 */}
                         <Pressable
                             className="items-center rounded-lg bg-primary py-2"
-                            onPress={() => {
-                                // TODO: 画面4「切り抜き箇所を調整」をモーダル(シート)で開き、
-                                // updateCut(cutId, { startMs, endMs, transform }) に繋ぐ
-                                console.log('切りぬきを調整:', selectedCut.cutId);
-                            }}
+                            onPress={ handleOpenCropSheet }
                         >
                             <View className="flex-row items-center gap-2">
                                 <MaterialCommunityIcons name="content-cut" size={18} color="white" />
@@ -951,6 +938,14 @@ export default function EditorScreen() {
                     </View>
                 )}
             </View>
+            {showCropSheet && selectedCut && (
+                <CutAdjustSheet
+                    initialCutId={selectedCut.cutId}
+                    thumbs={thumbs}
+                    muted={muted}
+                    onClose={handleCloseCropSheet}
+                />
+            )}
         </SafeAreaView>
     );
 }
