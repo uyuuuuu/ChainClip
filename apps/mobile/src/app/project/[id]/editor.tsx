@@ -904,10 +904,10 @@ export default function EditorScreen() {
                             </View>
                         </View>
 
-                        {/* 切りぬきを調整 → 4. カット編集画面(シート)を開く */}
+                        {/* 切りぬきを調整 */}
                         <Pressable
                             className="items-center rounded-lg bg-primary py-2"
-                            onPress={() => { handleOpenCropSheet }}
+                            onPress={ handleOpenCropSheet }
                         >
                             <View className="flex-row items-center gap-2">
                                 <MaterialCommunityIcons name="content-cut" size={18} color="white" />
