@@ -127,7 +127,12 @@ export default function CreateScreen() {
         videoUri: videos[target.clipIndex].videoUri,
         contentType: videos[target.clipIndex].contentType,
       }));
-      await uploadClips.mutateAsync({ projectId, items });
+      // アップロードは所要時間が長いので、実際の進捗を 0.3〜0.7 の区間へ反映する
+      await uploadClips.mutateAsync({
+        projectId,
+        items,
+        onProgress: (ratio) => setProgress(0.3 + ratio * 0.4),
+      });
       setProgress(0.7);
 
       // 4. prepare worker を起動（status = preparing）

@@ -17,14 +17,22 @@ export type ClipUploadTarget = {
 type Variables = {
   projectId: string;
   items: ClipUploadTarget[];
+  // 全clip合算の進捗(0〜1)。並列アップロードのため単調増加とは限らない。
+  onProgress?: (ratio: number) => void;
 };
 
 // 1件分: GCSへPUT → upload-complete でサーバーに完了通知
 async function uploadOne(
   projectId: string,
   item: ClipUploadTarget,
+  onProgress?: (ratio: number) => void,
 ): Promise<CompleteUploadResponse> {
-  await uploadToGcs(item.target.uploadUrl, item.videoUri, item.contentType);
+  await uploadToGcs(
+    item.target.uploadUrl,
+    item.videoUri,
+    item.contentType,
+    onProgress,
+  );
 
   // GCSアップロード成功後、サーバーに完了通知
   // accessToken は api層が projectId から解決してヘッダに付与する。
@@ -38,7 +46,27 @@ export function useUploadClips() {
     mutationFn: ({
       projectId,
       items,
-    }: Variables): Promise<CompleteUploadResponse[]> =>
-      Promise.all(items.map((item) => uploadOne(projectId, item))),
+      onProgress,
+    }: Variables): Promise<CompleteUploadResponse[]> => {
+      // clipごとの進捗を保持し、更新のたびに平均を親へ通知する。
+      // 各動画のサイズ差は無視してclip数で等分する。
+      const ratios = new Array<number>(items.length).fill(0);
+
+      return Promise.all(
+        items.map((item, i) =>
+          uploadOne(
+            projectId,
+            item,
+            onProgress
+              ? (ratio) => {
+                  ratios[i] = ratio;
+                  const total = ratios.reduce((a, b) => a + b, 0);
+                  onProgress(total / items.length);
+                }
+              : undefined,
+          ),
+        ),
+      );
+    },
   });
 }
