@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import os
 
-# domain の入力DTOだけに依存する
 from app.domain.detection import LabelFrame, LabelTrack
+from app.domain.error import DomainError
 
-class VideoIntelligenceError(Exception):
+class VideoIntelligenceError(DomainError):
     """VI API 呼び出しに失敗したときの例外"""
 
 def _offset_to_ms(offset) -> int:
@@ -33,6 +33,9 @@ def parse_annotation(raw: dict) -> list[LabelTrack]:
 
 #VI APIを叩いて生dictを返す
 def _call_api(gcs_uri: str, timeout: int = 1800) -> dict:
+    import concurrent.futures
+
+    from google.api_core.exceptions import GoogleAPIError
     from google.cloud import videointelligence
     from google.protobuf.json_format import MessageToDict
 
@@ -48,8 +51,14 @@ def _call_api(gcs_uri: str, timeout: int = 1800) -> dict:
             }
         },
     }
-    operation = client.annotate_video(request=request)
-    result = operation.result(timeout=timeout).annotation_results[0]
+    try:
+        operation = client.annotate_video(request=request)
+        annotation_results = operation.result(timeout=timeout).annotation_results
+        if not annotation_results:
+            raise VideoIntelligenceError(f"annotation_results が空です: {gcs_uri}")
+        result = annotation_results[0]
+    except (GoogleAPIError, concurrent.futures.TimeoutError) as exc:
+        raise VideoIntelligenceError(f"Video Intelligence API呼び出しに失敗しました: {exc}") from exc
     return MessageToDict(result._pb)
 
 

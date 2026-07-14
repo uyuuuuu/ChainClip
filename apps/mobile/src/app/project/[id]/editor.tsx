@@ -2,15 +2,15 @@ import CutAdjustSheet from '@/components/ui/cutAdjustSheet';
 import { GradientButton } from '@/components/ui/gradientButton';
 import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
-import { CLIP_MAP } from '@/lib/mockClips';
+import { useProjectStatus } from '@/hooks/useProjectStatus';
+import { buildClipMap, type ClipMap } from '@/lib/clipMap';
 import { useEditStore, type Cut } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { Asset } from 'expo-asset';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, GestureResponderEvent, Image, Pressable, Switch, View } from 'react-native';
 import DraggableFlatList, { useOnCellActiveAnimation, type RenderItemParams } from 'react-native-draggable-flatlist';
 import Reanimated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
@@ -26,14 +26,14 @@ const thumbKey = (cut: { clipId: string; startMs: number }) => `${cut.clipId}:${
 
 // カットがどのシーン由来かを clipId と開始位置から逆引きして、ラベルを取り出す
 // （storeのCutはラベルを持っていないため）
-const findLabels = (cut: Cut): string[] => {
-    const scene = CLIP_MAP[cut.clipId]?.scenes.find((s) => s.sceneId === cut.sceneId);
+const findLabels = (cut: Cut, clipMap: ClipMap): string[] => {
+    const scene = clipMap[cut.clipId]?.scenes.find((s) => s.sceneId === cut.sceneId);
     return scene ? [...new Set(scene.labels)] : [];
 };
 
 // ビデオプレーヤーによって映す位置
-const videoLayoutFor = (cut: Cut | null, containerSize: number) => {
-    const clip = cut ? CLIP_MAP[cut.clipId] : undefined;
+const videoLayoutFor = (cut: Cut | null, containerSize: number, clipMap: ClipMap) => {
+    const clip = cut ? clipMap[cut.clipId] : undefined;
     if (!cut || !clip || !containerSize) {
         // 計算できないうちはコンテナいっぱいに表示しておく
         return { width: '100%' as const, height: '100%' as const, left: 0, top: 0 };
@@ -91,6 +91,11 @@ const formatBadge = (ms: number): string => {
 export default function EditorScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
 
+    // サーバーの clips（署名付きURL・解像度・シーン）を clipId 引きの対応表にする。
+    // ready 済みなら scenes.tsx を通ってきているのでキャッシュから即取れる。
+    const { data: project } = useProjectStatus(id);
+    const clipMap = useMemo<ClipMap>(() => buildClipMap(project?.clips), [project?.clips]);
+
     /* Zustand: タイムラインの状態 */
     const timeline = useEditStore((s) => s.timeline);
     const transition = useEditStore((s) => s.transition);
@@ -105,9 +110,8 @@ export default function EditorScreen() {
     const firstCut = timeline[0];
 
     // Aが表・Bが裏で始まり、カットが切り替わるたびに役割を交代する。
-    // 初期ソースはrefに固定（useVideoPlayerはソースが変わるとプレーヤーを作り直すため）
-    const initialSource = useRef(firstCut ? (CLIP_MAP[firstCut.clipId]?.video ?? null) : null);
-    const playerA = useVideoPlayer(initialSource.current, (p) => {
+    // 初期ソースは持たない（clipMapが揃ってから loadCutInto で読み込む）。
+    const playerA = useVideoPlayer(null, (p) => {
         p.timeUpdateEventInterval = 0.25; // 再生位置イベントを0.25秒ごとに発火
         p.loop = false;
     });
@@ -196,7 +200,7 @@ export default function EditorScreen() {
     const loadCutInto = (key: PlayerKey, cut: Cut, seekMs = cut.startMs) =>
         new Promise<void>((resolve) => {
             const player = getPlayer(key);
-            const clip = CLIP_MAP[cut.clipId];
+            const clip = clipMap[cut.clipId];
             if (!clip) {
                 resolve();
                 return;
@@ -216,7 +220,7 @@ export default function EditorScreen() {
             pendingSeek.current[key] = { seekMs, resolve };
             if (loadedClip.current[key] !== cut.clipId) {
                 loadedClip.current[key] = cut.clipId;
-                player.replaceAsync(clip.video).catch((e) => {
+                player.replaceAsync(clip.videoUrl).catch((e) => {
                     console.warn('動画の差し替えが中断されました:', e);
                 });
             }
@@ -388,13 +392,19 @@ export default function EditorScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // 画面に入った瞬間、先頭カットから自動再生を始める
-    // （自動再生をやめたい場合は autoplay: false にするだけ）
+    // clipMap が揃ったら先頭カットをプレビューに読み込む（一度だけ）。
+    // clips 取得は非同期なので、mount 時点では clipMap が空のことがある。
+    const didInitialLoad = useRef(false);
     useEffect(() => {
+        if (didInitialLoad.current) return;
+        if (Object.keys(clipMap).length === 0) return; // まだclips未取得
         const first = useEditStore.getState().timeline[0];
-        if (first) showCutOnActive(first, { autoplay: false });
+        if (first) {
+            didInitialLoad.current = true;
+            showCutOnActive(first, { autoplay: false });
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [clipMap]);
 
     // 再生/停止の切り替え
     const togglePlay = () => {
@@ -460,19 +470,14 @@ export default function EditorScreen() {
             for (const cut of timeline) {
                 const key = thumbKey(cut);
                 if (generatedKeys.current.has(key)) continue;
+
+                const clip = clipMap[cut.clipId];
+                if (!clip) continue; // clipMap未取得。次回(clipMap更新)にリトライさせるため記録しない
                 generatedKeys.current.add(key);
-
-                const clip = CLIP_MAP[cut.clipId];
-                if (!clip) continue;
                 try {
-                    // require()したローカル動画はAsset経由でURIに解決する。
-                    // サーバー接続後はsigned URLをそのまま渡せるので、この2行は不要
-                    const asset = Asset.fromModule(clip.video);
-                    await asset.downloadAsync();
-                    const videoUri = asset.localUri ?? asset.uri;
-
+                    // サーバーの署名付きURLをそのまま渡してカット先頭フレームをサムネ化する
                     if (cancelled) return;
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, {
+                    const { uri } = await VideoThumbnails.getThumbnailAsync(clip.videoUrl, {
                         time: cut.startMs, // カットの先頭フレームをサムネに
                     });
                     if (!cancelled) {
@@ -489,7 +494,7 @@ export default function EditorScreen() {
         return () => {
             cancelled = true;
         };
-    }, [timeline]);
+    }, [timeline, clipMap]);
 
     // 選択中のカット
     const selectedCut = timeline.find((c) => c.cutId === selectedCutId) ?? null;
@@ -698,7 +703,7 @@ export default function EditorScreen() {
                     style={{ width: playerSize, height: playerSize }}
                 >
                     {(['A', 'B'] as const).map((key) => {
-                        const layout = videoLayoutFor(shownCuts[key], playerSize);
+                        const layout = videoLayoutFor(shownCuts[key], playerSize, clipMap);
                         return (
                             <Animated.View
                                 key={key}
@@ -891,7 +896,7 @@ export default function EditorScreen() {
                             </View>
                             {/* ラベル */}
                             <View className="flex-1 flex-row flex-wrap gap-2">
-                                {findLabels(selectedCut).slice(0, 3).map((tag) => (
+                                {findLabels(selectedCut, clipMap).slice(0, 3).map((tag) => (
                                     <View
                                         key={tag}
                                         className="rounded-md bg-slate-100 px-2.5 py-0.5 shadow-md shadow-gray-100"
@@ -941,6 +946,7 @@ export default function EditorScreen() {
             {showCropSheet && selectedCut && (
                 <CutAdjustSheet
                     initialCutId={selectedCut.cutId}
+                    clipMap={clipMap}
                     thumbs={thumbs}
                     muted={muted}
                     onClose={handleCloseCropSheet}

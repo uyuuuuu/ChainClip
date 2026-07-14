@@ -231,7 +231,11 @@ export interface components {
         EditConfigRequest: {
             /** Version */
             version: number;
-            output: components["schemas"]["OutputConfigRequest"];
+            /**
+             * Transition
+             * @enum {string}
+             */
+            transition: "none" | "fade";
             /** Timeline */
             timeline: components["schemas"]["TimelineCutRequest"][];
         };
@@ -256,25 +260,15 @@ export interface components {
             errorCode?: string | null;
             /** Errormessage */
             errorMessage?: string | null;
+            /** Shareurl */
+            shareUrl?: string | null;
+            /** Finalvideourl */
+            finalVideoUrl?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
-        };
-        /** OutputConfigRequest */
-        OutputConfigRequest: {
-            /**
-             * Aspectratio
-             * @enum {string}
-             */
-            aspectRatio: "9:16" | "1:1" | "3:4" | "4:5" | "16:9";
-            /** Width */
-            width: number;
-            /** Height */
-            height: number;
-            /** Fps */
-            fps: number;
         };
         /** ReadyClipResponse */
         ReadyClipResponse: {
@@ -374,7 +368,6 @@ export interface components {
             /** Endms */
             endMs: number;
             transform: components["schemas"]["TransformRequest"];
-            transitionToNext?: components["schemas"]["TransitionRequest"] | null;
         };
         /** TransformRequest */
         TransformRequest: {
@@ -384,16 +377,6 @@ export interface components {
             offsetX: number;
             /** Offsety */
             offsetY: number;
-        };
-        /** TransitionRequest */
-        TransitionRequest: {
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "none" | "fade";
-            /** Durationms */
-            durationMs: number;
         };
         /** ValidationError */
         ValidationError: {

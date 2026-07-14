@@ -1,31 +1,37 @@
+import { File, UploadTask, UploadType } from "expo-file-system";
+
 /**
- * 端末内の file:// URI を Blob 化し、GCSの署名付きURLへPUTする。
+ * 端末内の file:// URI をGCSの署名付きURLへPUTする。
  *
  * 注意: 署名付きURLは署名時に指定した Content-Type と一致必須。
  * upload-urls リクエストで送った contentType と同じ値を渡すこと。
+ *
+ * onProgress には 0〜1 の値が渡る。サーバーが Content-Length を返さない等で
+ * 総バイト数が不明な場合は呼ばれない。
  */
 export async function uploadToGcs(
   uploadUrl: string,
   fileUri: string,
   contentType: string,
+  onProgress?: (ratio: number) => void,
 ): Promise<void> {
-  // 端末内URIを読み出して Blob 化する
-  const fileRes = await fetch(fileUri);
-  if (!fileRes.ok) {
-    throw new Error(
-      `ファイル読み込みに失敗しました (${fileRes.status}): ${fileUri}`,
-    );
-  }
-  const blob = await fileRes.blob();
+  const file = new File(fileUri);
 
-  const res = await fetch(uploadUrl, {
-    method: "PUT",
+  const task = new UploadTask(file, uploadUrl, {
+    httpMethod: "PUT",
+    uploadType: UploadType.BINARY_CONTENT,
     headers: { "Content-Type": contentType },
-    body: blob,
+    mimeType: contentType,
+    onProgress: onProgress
+      ? ({ bytesSent, totalBytes }) => {
+          if (totalBytes > 0) onProgress(bytesSent / totalBytes);
+        }
+      : undefined,
   });
-  if (!res.ok) {
-    throw new Error(
-      `GCSアップロードに失敗しました (${res.status}): ${await res.text()}`,
-    );
+
+  // uploadAsync は非2xxでも解決するため、ステータスは自前で確認する
+  const res = await task.uploadAsync();
+  if (res.status < 200 || res.status >= 300) {
+    throw new Error(`GCSアップロードに失敗しました (${res.status}): ${res.body}`);
   }
 }

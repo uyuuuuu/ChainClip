@@ -39,6 +39,9 @@ class ProjectRepo:
 
         project.created_at = model.created_at
         project.updated_at = model.updated_at
+        # refresh が開いたトランザクションをここで閉じる。
+        # 開いたままだとworkerの重い処理中にidle-in-transaction timeoutで接続が切られる。
+        self.session.commit()
         return project
 
     def get_by_id(self, project_id: uuid.UUID) -> Project | None:
@@ -99,6 +102,7 @@ class ProjectRepo:
         self.session.commit()
         self.session.refresh(model)
         project.updated_at = model.updated_at
+        self.session.commit()
 
 
 class ClipRepo:
@@ -127,6 +131,7 @@ class ClipRepo:
             self.session.refresh(model)
             clip.created_at = model.created_at
             clip.updated_at = model.updated_at
+        self.session.commit()
         return clips
 
     def get_by_id(self, clip_id: uuid.UUID) -> Clip | None:
@@ -161,6 +166,7 @@ class ClipRepo:
         self.session.commit()
         self.session.refresh(model)
         clip.updated_at = model.updated_at
+        self.session.commit()
 
 
 def _clip_from_model(model: ProjectClipModel) -> Clip:
@@ -206,6 +212,7 @@ class AssetRepo:
         self.session.refresh(model)
 
         asset.created_at = model.created_at
+        self.session.commit()
         return asset
 
     def list_by_project_id(self, project_id: uuid.UUID) -> list[ProjectAsset]:
@@ -256,6 +263,7 @@ class ProcessingJobRepo:
 
         job.created_at = model.created_at
         job.updated_at = model.updated_at
+        self.session.commit()
         return job
 
     def update(self, job: ProcessingJob) -> None:
@@ -271,3 +279,4 @@ class ProcessingJobRepo:
         self.session.commit()
         self.session.refresh(model)
         job.updated_at = model.updated_at
+        self.session.commit()

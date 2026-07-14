@@ -13,8 +13,6 @@ from app.infra.db.repository import AssetRepo, ClipRepo, ProjectRepo
 from app.infra.storage import gcs
 
 VIDEO_URL_EXPIRES_IN_SECONDS = 3600
-WEB_BASE_URL = "WEB_BASE_URL"
-
 
 @dataclass
 class SceneResult:
@@ -97,7 +95,7 @@ def get_project_status(
         assert project.share_slug is not None
         assert final_clip.public_url is not None
 
-        web_base_url = os.environ[WEB_BASE_URL]
+        web_base_url = os.environ["WEB_BASE_URL"]
         return ProjectStatusResult(
             project_id=project.id,
             status=project.status.value,

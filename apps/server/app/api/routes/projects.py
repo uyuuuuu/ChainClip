@@ -122,7 +122,8 @@ async def start_render_endpoint(
         access_token=access_token,
         title=body.title,
         description=body.description,
-        edit_config=body.edit_config.model_dump(by_alias=True),
+        # JSONB列にそのまま保存するため、UUID等をJSON互換の型に変換するmode="json"を使う
+        edit_config=body.edit_config.model_dump(mode="json", by_alias=True),
     )
     return StartRenderResponse(project_id=result.project_id, status=result.status)
 
