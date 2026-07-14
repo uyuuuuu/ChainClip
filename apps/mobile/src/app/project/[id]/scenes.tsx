@@ -2,35 +2,60 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { GradientButton } from '@/components/ui/gradientButton';
 import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
-import { CLIPS } from '@/lib/mockClips';
+import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { useEditStore } from '@/stores/editStore';
-import { Asset } from 'expo-asset';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
-// リストに表示するシーンの配列
-const ALL_SCENES = CLIPS.flatMap((clip) =>
-    clip.scenes.map((scene) => ({
-        ...scene,
-        labels: [...new Set(scene.labels)],
-        clipId: clip.clipId,
-        video: clip.video,
-    }))
-);
-type SceneItem = (typeof ALL_SCENES)[number];
-
-const TAGS = ['All', ...new Set(ALL_SCENES.flatMap((s) => s.labels))];
+// サーバーの clips（署名付きURL付き）から、リスト表示用のシーン配列に平坦化した1要素の型。
+type SceneItem = {
+    sceneId: string;
+    sceneIndex: number;
+    startMs: number;
+    endMs: number;
+    labels: string[];
+    clipId: string;
+    videoUrl: string; // 変換後mp4の署名付きURL
+};
 
 export default function ScenesScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const insets = useSafeAreaInsets();
-    const player = useVideoPlayer(CLIPS[0].video, (p) => {
+
+    // GET /projects/{id} を polling。preparing→ready で clips(scenes+署名付きURL) が揃う。
+    const { data: project } = useProjectStatus(id);
+    const clips = project?.clips ?? [];
+
+    // clips を「シーン1件ずつ」に平坦化する。ready 前は空配列。
+    const ALL_SCENES = useMemo<SceneItem[]>(
+        () =>
+            clips.flatMap((clip) =>
+                clip.scenes.map((scene) => ({
+                    sceneId: scene.sceneId,
+                    sceneIndex: scene.sceneIndex,
+                    startMs: scene.startMs,
+                    endMs: scene.endMs,
+                    labels: [...new Set(scene.labels)],
+                    clipId: clip.clipId,
+                    videoUrl: clip.video.url,
+                }))
+            ),
+        [clips]
+    );
+
+    const TAGS = useMemo(
+        () => ['All', ...new Set(ALL_SCENES.flatMap((s) => s.labels))],
+        [ALL_SCENES]
+    );
+
+    // 初期ソースは持たない（ready で clips が来てから replaceAsync で読み込む）。
+    const player = useVideoPlayer(null, (p) => {
         p.timeUpdateEventInterval = 0.25; // 再生位置イベントを0.25秒ごとに発火
         p.loop = false;
     });
@@ -47,16 +72,11 @@ export default function ScenesScreen() {
     const [duration, setDuration] = useState(0);
     // 動画差し替え後、読み込み完了を待ってからシークするための「予約」
     const pendingSeekMs = useRef<number | null>(null);
-    // いまプレーヤーに読み込まれているclip
-    const loadedClipId = useRef<string>(CLIPS[0].clipId);
+    // いまプレーヤーに読み込まれているclip（未ロードは null）
+    const loadedClipId = useRef<string | null>(null);
     // プレビュー中のシーン範囲
     type PreviewRange = { sceneId: string; startMs: number; endMs: number };
-    const [preview, setPreview] = useState<PreviewRange | null>(() => {
-        const first = ALL_SCENES[0];
-        return first
-            ? { sceneId: first.sceneId, startMs: first.startMs, endMs: first.endMs }
-            : null;
-    });
+    const [preview, setPreview] = useState<PreviewRange | null>(null);
 
     // イベントリスナーから読むためのref(理由は後述)
     const previewRef = useRef<PreviewRange | null>(preview);
@@ -194,7 +214,7 @@ export default function ScenesScreen() {
             setIsReady(false);
             player.pause();
             try {
-                await player.replaceAsync(scene.video);  // 読み込み完了まで待つ
+                await player.replaceAsync(scene.videoUrl);  // 署名付きURLを読み込み完了まで待つ
             } catch (e) {
                 // 連打で中断された場合など。最後のタップ分が生きるので何もしなくてよい
                 console.warn('動画の差し替えが中断されました:', e);
@@ -217,23 +237,16 @@ export default function ScenesScreen() {
         let cancelled = false; // 画面を離れた後にsetStateしないためのフラグ
 
         const generate = async () => {
-            for (const clip of CLIPS) {
+            // サーバーの署名付きURLをそのまま渡してシーン先頭フレームをサムネ化する
+            for (const scene of ALL_SCENES) {
+                if (cancelled) return;
                 try {
-                    // require()したローカル動画はAsset経由でURI(ファイルパス)に解決する。
-                    // サーバー接続後はsigned URLの文字列をそのまま渡せるので、この2行は不要になる
-                    const asset = Asset.fromModule(clip.video);
-                    await asset.downloadAsync();
-                    const videoUri = asset.localUri ?? asset.uri;
-
-                    for (const scene of clip.scenes) {
-                        if (cancelled) return;
-                        const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, {
-                            time: scene.startMs, // ミリ秒指定。シーンの先頭フレームをサムネにする
-                        });
-                        if (!cancelled) {
-                            // 1枚できるたびに反映（全部待たずに順次表示される）
-                            setThumbs((prev) => ({ ...prev, [scene.sceneId]: uri }));
-                        }
+                    const { uri } = await VideoThumbnails.getThumbnailAsync(scene.videoUrl, {
+                        time: scene.startMs, // ミリ秒指定。シーンの先頭フレームをサムネにする
+                    });
+                    if (!cancelled) {
+                        // 1枚できるたびに反映（全部待たずに順次表示される）
+                        setThumbs((prev) => ({ ...prev, [scene.sceneId]: uri }));
                     }
                 } catch (e) {
                     console.warn('サムネイル生成に失敗:', e);
@@ -245,7 +258,7 @@ export default function ScenesScreen() {
         return () => {
             cancelled = true;
         };
-    }, []);
+    }, [ALL_SCENES]);
 
     /* Zustand */
     // 選択済みシーン
@@ -287,6 +300,57 @@ export default function ScenesScreen() {
             if (allSelected ? isSelected : !isSelected) toggleOne(scene);
         });
     };
+
+    // clips が揃ったら先頭シーンを自動プレビュー（未選択状態から一度だけ）
+    useEffect(() => {
+        if (ALL_SCENES.length > 0 && loadedClipId.current === null) {
+            previewScene(ALL_SCENES[0]);
+        }
+        // previewScene は都度生成される関数なので依存に入れない（ALL_SCENES 変化時のみ判定）
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ALL_SCENES]);
+
+    // preparing中・取得前はローディング、failedはエラー表示
+    const projectStatus = project?.status;
+    if (projectStatus !== 'ready') {
+        const isFailed = projectStatus === 'failed';
+        return (
+            <SafeAreaView className="w-full flex-1 bg-white items-center justify-center px-8 gap-4">
+                <View className="h-16 flex-row items-center justify-center absolute top-0 left-0 right-0">
+                    <Pressable onPress={() => router.back()} className="absolute left-2 p-2">
+                        <MaterialCommunityIcons name="chevron-left" size={48} color="#262626" />
+                    </Pressable>
+                </View>
+                {isFailed ? (
+                    <>
+                        <Text className="text-center text-red-500 font-bold">解析に失敗しました</Text>
+                        {project?.errorMessage && (
+                            <Text className="text-center text-xs text-gray-500" numberOfLines={3}>
+                                {project.errorMessage}
+                            </Text>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        <Text className="text-center text-base font-bold text-[#029FFF]">動画を解析中…</Text>
+                        {project?.clipsTotal != null && (
+                            <Text className="text-xs text-gray-500">
+                                {project.clipsReady ?? 0} / {project.clipsTotal} 本 完了
+                            </Text>
+                        )}
+                        <Progress
+                            className="w-2/3 h-1"
+                            value={
+                                project?.clipsTotal
+                                    ? ((project.clipsReady ?? 0) / project.clipsTotal) * 100
+                                    : 0
+                            }
+                        />
+                    </>
+                )}
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView className="w-full flex-1 bg-white">

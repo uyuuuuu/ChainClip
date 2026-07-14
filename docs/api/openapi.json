@@ -647,6 +647,28 @@
               }
             ],
             "title": "Errormessage"
+          },
+          "shareUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shareurl"
+          },
+          "finalVideoUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finalvideourl"
           }
         },
         "type": "object",

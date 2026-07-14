@@ -1,8 +1,7 @@
 import { Text } from '@/components/ui/text';
-import { CLIP_MAP } from '@/lib/mockClips';
+import type { ClipMap } from '@/lib/clipMap';
 import { useEditStore, type Cut, type Transform } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { Asset } from 'expo-asset';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -45,12 +44,13 @@ const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min)
 
 type Props = {
     initialCutId: string;                 // 開いた時に編集対象にするカット
+    clipMap: ClipMap;                     // サーバー clips（署名付きURL・解像度・シーン）
     thumbs: Record<string, string>;       // editorで生成済みのサムネ（上部タイムラインに使う）
     muted?: boolean;                      // editor側のミュート設定を引き継ぐ
     onClose: (lastCutId: string) => void; // 閉じる時に「最後に編集していたカットID」を返す
 };
 
-export default function CutAdjustSheet({ initialCutId, thumbs, muted, onClose }: Props) {
+export default function CutAdjustSheet({ initialCutId, clipMap, thumbs, muted, onClose }: Props) {
     const timeline = useEditStore((s) => s.timeline);
 
     // いま編集対象になっているカット
@@ -125,7 +125,7 @@ export default function CutAdjustSheet({ initialCutId, thumbs, muted, onClose }:
                             key={cutId} がポイント。カットが切り替わるたびにコンポーネントごと
                             作り直される（＝前のカットの状態が確実にリセットされ、保存も走る） */}
                         {currentCut ? (
-                            <CutEditor key={currentCut.cutId} cut={currentCut} muted={muted} />
+                            <CutEditor key={currentCut.cutId} cut={currentCut} clipMap={clipMap} muted={muted} />
                         ) : (
                             <Text className="py-10 text-center text-gray-400">カットがありません</Text>
                         )}
@@ -137,10 +137,10 @@ export default function CutAdjustSheet({ initialCutId, thumbs, muted, onClose }:
 }
 
 // カット編集
-function CutEditor({ cut, muted }: { cut: Cut; muted?: boolean }) {
+function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?: boolean }) {
     const updateCut = useEditStore((s) => s.updateCut);
 
-    const clip = CLIP_MAP[cut.clipId];
+    const clip = clipMap[cut.clipId];
     // このカットが属するシーン（フィルムストリップで動かせる範囲になる）
     const scene = clip?.scenes.find((sc) => sc.sceneId === cut.sceneId);
     const sceneStart = scene?.startMs ?? 0;
@@ -195,7 +195,7 @@ function CutEditor({ cut, muted }: { cut: Cut; muted?: boolean }) {
     }, []);
 
     // ビデオプレーヤー
-    const player = useVideoPlayer(clip?.video ?? null, (p) => {
+    const player = useVideoPlayer(clip?.videoUrl ?? null, (p) => {
         p.timeUpdateEventInterval = 0.1; // ループの折り返しを細かく判定したいので短めに
         p.loop = false; // 「動画ファイル全体のループ」ではなく「カット範囲のループ」を自前で行う
         p.muted = !!muted;
@@ -342,19 +342,14 @@ function CutEditor({ cut, muted }: { cut: Cut; muted?: boolean }) {
         (async () => {
             if (!clip) return;
             try {
-                // require()したローカル動画はAsset経由でURIに解決する。
-                // サーバー接続後はsigned URLをそのまま渡せるので、この2行は不要
-                const asset = Asset.fromModule(clip.video);
-                await asset.downloadAsync();
-                const videoUri = asset.localUri ?? asset.uri;
-
+                // サーバーの署名付きURLをそのまま渡してフィルムストリップを生成する
                 const arr: (string | null)[] = new Array(thumbCount).fill(null);
                 for (let i = 0; i < thumbCount; i++) {
                     // サムネi枚目の左端が指す時刻
                     const timeMs = Math.round(
                         sceneStart + Math.min((i * FILM_THUMB_W) / pxPerMs, sceneLen - 1)
                     );
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(videoUri, { time: timeMs });
+                    const { uri } = await VideoThumbnails.getThumbnailAsync(clip.videoUrl, { time: timeMs });
                     if (cancelled) return;
                     arr[i] = uri;
                     setFilmThumbs([...arr]); // 生成できた分から順に表示する
@@ -607,7 +602,6 @@ function CutEditor({ cut, muted }: { cut: Cut; muted?: boolean }) {
                                     width: 3,
                                     height: FILM_H + 16,
                                     backgroundColor: '#ebebeb',
-                                    shadow: 2
                                 }}
                             />
                         </>

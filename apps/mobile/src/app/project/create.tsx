@@ -3,10 +3,13 @@ import { GradientButton } from '@/components/ui/gradientButton';
 import { Progress } from "@/components/ui/progress";
 import { Text } from '@/components/ui/text';
 import { useCreateProject } from '@/hooks/useCreateProject';
+import { useRequestUploadUrls } from '@/hooks/useRequestUploadUrls';
+import { useStartPrepare } from '@/hooks/useStartPrepare';
+import { useUploadClips, type ClipUploadTarget } from '@/hooks/useUploadClips';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Image, Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
 // 画面状態（アップロード前、アップロード後、解析中、解析完了(いらないかも)、解析失敗）
@@ -17,7 +20,16 @@ type PickedVideo = {
   thumbnailUri: string;  // 生成したサムネ画像のURI
   durationMs: number;
   fileName: string;
+  contentType: string;   // 署名付きURL発行/アップロードで一致必須
+  sizeBytes: number;     // upload-urls のバリデーション用
 };
+
+// 拡張子から content-type を推定する（asset.mimeType が取れない端末向けのフォールバック）
+function guessContentType(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  if (ext === 'mov' || ext === 'qt') return 'video/quicktime';
+  return 'video/mp4';
+}
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import logo from "../../../assets/images/icon.png";
@@ -29,9 +41,14 @@ export default function CreateScreen() {
   const [status, setStatus] = useState<ClipStatus>('uploading');
   // 解析進捗
   const [progress, setProgress] = useState(0);
+  // エラーメッセージ（パイプライン失敗時）
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // プロジェクト作成
+  // プロジェクト作成〜prepare 起動までの各ステップ
   const createProject = useCreateProject();
+  const requestUploadUrls = useRequestUploadUrls();
+  const uploadClips = useUploadClips();
+  const startPrepare = useStartPrepare();
 
   // 端末から動画のアップロード
   async function pickVideos() {
@@ -53,11 +70,14 @@ export default function CreateScreen() {
           asset.uri,
           { time: 0, quality: 0.7 }
         );
+        const fileName = asset.fileName ?? 'unknown.mov';
         picked.push({
           videoUri: asset.uri,
           thumbnailUri,
           durationMs: asset.duration ?? 0,
-          fileName: asset.fileName ?? 'unknown.mov',
+          fileName,
+          contentType: asset.mimeType ?? guessContentType(fileName),
+          sizeBytes: asset.fileSize ?? 0,
         });
       } catch (e) {
         console.warn('サムネ生成に失敗:', asset.fileName, e);
@@ -76,26 +96,55 @@ export default function CreateScreen() {
     if (updated.length === 0) setStatus('uploading');
   };
 
-  // 【仮】：プログレスバーのタイマー
-  useEffect(() => {
-    if (status !== 'processing') return;
+  // シーン生成：プロジェクト作成 → アップロードURL発行 → GCSアップロード → prepare起動 → scenesへ
+  // 各ステップの進捗をおおまかにバーへ反映する。失敗したら uploaded 画面へ戻してエラー表示。
+  async function startPipeline() {
+    if (videos.length === 0) return;
+    setStatus('processing');
+    setProgress(0);
+    setErrorMessage(null);
 
-    const timer = setInterval(() => {
-      setProgress((prev) => Math.min(prev + 0.05, 1)); // 1を超えないようにする
-    }, 500);
+    try {
+      // 1. プロジェクト作成（accessTokenはhook内でsecure-storeに保存される）
+      const { projectId } = await createProject.mutateAsync();
+      setProgress(0.15);
 
-    return () => clearInterval(timer);
-  }, [status]);
+      // 2. clipごとの署名付きアップロードURLを発行
+      const targets = await requestUploadUrls.mutateAsync({
+        projectId,
+        clips: videos.map((v) => ({
+          originalFilename: v.fileName,
+          contentType: v.contentType,
+          sizeBytes: v.sizeBytes,
+        })),
+      });
+      setProgress(0.3);
 
-  // 進捗が満タンになったら遷移する
-  useEffect(() => {
-    if (status === 'processing' && progress >= 1) {
+      // 3. 発行されたURLへ端末動画をアップロードし、完了通知する
+      //    clipIndex（=pick順）で videos と対応付ける。contentTypeは発行時と一致必須。
+      const items: ClipUploadTarget[] = targets.map((target) => ({
+        target,
+        videoUri: videos[target.clipIndex].videoUri,
+        contentType: videos[target.clipIndex].contentType,
+      }));
+      await uploadClips.mutateAsync({ projectId, items });
+      setProgress(0.7);
+
+      // 4. prepare worker を起動（status = preparing）
+      await startPrepare.mutateAsync({ projectId });
+      setProgress(1);
+
+      // 5. シーン選択画面へ。以降の preparing→ready は scenes 側で polling する
       router.replace({
         pathname: '/project/[id]/scenes',
-        params: { id: '123' },
+        params: { id: projectId },
       });
+    } catch (e) {
+      setErrorMessage(String(e));
+      setStatus('uploaded');
+      setProgress(0);
     }
-  }, [status, progress]);
+  }
 
   return (
     <SafeAreaView className="w-full flex-1 bg-white">
@@ -118,21 +167,6 @@ export default function CreateScreen() {
               <Text className="text-lg">動画をアップロード</Text>
             </Button>
             <Text className="text-xs text-gray-500">ファイルサイズは1アイテムあたり〇GBまでです。</Text>
-
-            {/* プロジェクト生成ボタン */}
-            <Button
-              variant="outline"
-              onPress={() => createProject.mutate()}>
-              {!createProject.isPending && !createProject.isSuccess && !createProject.isError &&
-                <Text>"プロジェクト作成ボタン"</Text>}
-              {createProject.isPending && <Text>作成中...</Text>}
-              {createProject.isSuccess && <Text>OK: {createProject.data.projectId}</Text>}
-              {createProject.isError && (
-                <Text style={{ fontSize: 10 }}>
-                  失敗: {String(createProject.error)}
-                </Text>
-              )}
-            </Button>
           </View>
         }
 
@@ -181,27 +215,28 @@ export default function CreateScreen() {
       {(status === 'uploaded' || status === 'processing') && (
         <View className="w-full h-32 flex items-center justify-center bg-white">
           {status === 'uploaded' && (
-            <GradientButton
-              label="シーンを生成する"
-              style={{ width: "80%" }}
-              textStyle={{ fontSize: 24 }}
-              onPress={() =>
-                setStatus('processing')
-              }
-            />)}
+            <View className="w-full flex flex-col justify-center items-center">
+              {errorMessage && (
+                <Text className="text-xs mb-2 text-red-500" numberOfLines={2}>
+                  失敗: {errorMessage}
+                </Text>
+              )}
+              <GradientButton
+                label="シーンを生成する"
+                style={{ width: "80%" }}
+                textStyle={{ fontSize: 24 }}
+                onPress={startPipeline}
+              />
+            </View>
+          )}
           {status === 'processing' && (
             <View className="w-full flex flex-col justify-center items-center">
-              <Text className="text-xs mb-2 text-gray-500">終了次第ポップアップ通知でお知らせします。</Text>
+              <Text className="text-xs mb-2 text-gray-500">アップロードと解析の準備をしています…</Text>
               <GradientButton
-                label="動画を解析中…"
+                label="準備中…"
                 style={{ width: "80%"}}
                 textStyle={{ fontSize: 24 }}
-                onPress={() =>
-                  router.push({
-                    pathname: "/project/[id]/scenes",
-                    params: { id: "123" },
-                  })
-                }
+                onPress={() => { /* 準備中は操作不可 */ }}
               />
               <Progress
                 className="mt-2 w-5/6 h-1"

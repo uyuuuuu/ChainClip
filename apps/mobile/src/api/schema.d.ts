@@ -260,6 +260,10 @@ export interface components {
             errorCode?: string | null;
             /** Errormessage */
             errorMessage?: string | null;
+            /** Shareurl */
+            shareUrl?: string | null;
+            /** Finalvideourl */
+            finalVideoUrl?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
