@@ -16,12 +16,12 @@ import DraggableFlatList, { useOnCellActiveAnimation, type RenderItemParams } fr
 import Reanimated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-// フェードにかける時間
-const FADE_MS = 180;
-
+// 2つのプレーヤーの識別子
+// 表: いま画面に見えている方 / 裏: 次のカットを先読みしておく方
+// 先読みをさせることで、別動画の読み込み時間を削減してラグを防ぐ
 type PlayerKey = 'A' | 'B';
 
-// サムネイルのキー(clipId:開始位置)
+// サムネイルのキー(clipId:startMs)
 const thumbKey = (cut: { clipId: string; startMs: number }) => `${cut.clipId}:${cut.startMs}`;
 
 // カットがどのシーン由来かを clipId と開始位置から逆引きして、ラベルを取り出す
@@ -43,7 +43,7 @@ const videoLayoutFor = (cut: Cut | null, containerSize: number, clipMap: ClipMap
 
     // 切り抜く正方形の一辺(動画ピクセル)
     const cropSide = Math.min(W, H) / zoom;
-    // 動画ピクセル → 画面px の倍率。「切り抜き正方形 = コンテナの一辺」になるように決める
+    // 動画ピクセル → 画面px の倍率。「切り抜き正方形 = コンテナの一辺」になるように
     const scale = containerSize / cropSide;
 
     // 切り抜き正方形の左上(動画ピクセル)
@@ -68,17 +68,6 @@ const formatTime = (seconds: number): string => {
     return `${pad(h)}:${pad(m)}:${pad(s)}`;
 };
 
-// ドラッグ中に少し拡大して持ち上げる
-const CutScaleDecorator = ({ children }: { children: ReactNode }) => {
-    const { isActive, onActiveAnim } = useOnCellActiveAnimation();
-    const style = useAnimatedStyle(() => {
-        // ドラッグ中だけ 1 → 1.06 倍に拡大する
-        const scale = isActive ? interpolate(onActiveAnim.value, [0, 1], [1, 1.06]) : 1;
-        return { transform: [{ scaleX: scale }, { scaleY: scale }] };
-    }, [isActive]);
-    return <Reanimated.View style={style}>{children}</Reanimated.View>;
-};
-
 // カットの長さ表示（ミリ秒 → 00:03）
 const formatBadge = (ms: number): string => {
     const total = Math.round(ms / 1000);
@@ -86,6 +75,17 @@ const formatBadge = (ms: number): string => {
     const s = total % 60;
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${pad(m)}:${pad(s)}`;
+};
+
+// ドラッグ中に少し拡大して持ち上げる
+const CutScaleDecorator = ({ children }: { children: ReactNode }) => {
+    const { isActive, onActiveAnim } = useOnCellActiveAnimation();
+    const style = useAnimatedStyle(() => {
+        // 1 → 1.06 倍に拡大する
+        const scale = isActive ? interpolate(onActiveAnim.value, [0, 1], [1, 1.06]) : 1;
+        return { transform: [{ scaleX: scale }, { scaleY: scale }] };
+    }, [isActive]);
+    return <Reanimated.View style={style}>{children}</Reanimated.View>;
 };
 
 export default function EditorScreen() {
@@ -121,9 +121,9 @@ export default function EditorScreen() {
     });
     const getPlayer = (key: PlayerKey) => (key === 'A' ? playerA : playerB);
 
-    // いま「表」になっているプレーヤー（zIndexを手前にする用）
+    // 現在表示されているプレーヤー
     const [activeKey, setActiveKey] = useState<PlayerKey>('A');
-    // 各プレーヤーにどのカットが載っているかを登録
+    // 各プレーヤーにどのカットが載っているか
     const [shownCuts, setShownCuts] = useState<Record<PlayerKey, Cut | null>>({
         A: firstCut ?? null,
         B: null,
@@ -142,22 +142,22 @@ export default function EditorScreen() {
     const [muted, setMuted] = useState(false);
     // 歯車の設定ポップアップの開閉
     const [showSettings, setShowSettings] = useState(false);
-    // カット秒数の選択肢ポップアップ(サブメニュー)の開閉
+    // カット秒数の選択肢ポップアップの開閉
     const [showCutSecMenu, setShowCutSecMenu] = useState(false);
     // いまプレビュー再生の対象になっているカット
     const [playingCutId, setPlayingCutId] = useState<string | null>(firstCut?.cutId ?? null);
-    // タップで選択中のカット（下に詳細カードが出る）。初期値は一番左のカット
+    // タップで選択中のカット
     const [selectedCutId, setSelectedCutId] = useState<string | null>(firstCut?.cutId ?? null);
     // カット編集シートの表示
     const [showCropSheet, setShowCropSheet] = useState(false);
+    /* サムネイル（キーは clipId:startMs） */
+    const [thumbs, setThumbs] = useState<Record<string, string>>({});
 
-    // イベントリスナーから最新値を読むためのref
+    // イベントリスナーから最新値を読む用のref
     const timelineRef = useRef(timeline);
-    const transitionRef = useRef(transition);
     const activeKeyRef = useRef<PlayerKey>('A');
     const playingCutIdRef = useRef<string | null>(firstCut?.cutId ?? null);
-    const mutedRef = useRef(false);
-    // いまプレーヤーに読み込まれているclip
+    // いま各プレーヤーに読み込まれている元動画
     const loadedClip = useRef<Record<PlayerKey, string | null>>({
         A: firstCut?.clipId ?? null,
         B: null,
@@ -167,36 +167,16 @@ export default function EditorScreen() {
         A: null,
         B: null,
     });
-    // 先読み(次カットの事前読み込み)が完了しているカットのID
+    // 先読みが完了しているカットのID
     const prepared = useRef<Record<PlayerKey, string | null>>({ A: null, B: null });
     // 次カットへの切り替え処理の多重実行防止
     const advancing = useRef(false);
     // シーク直後に届く「古い再生位置」のイベントを無視する期限
     const ignoreTimeUpdateUntil = useRef(0);
+    // 生成済み(生成中)のサムネイルキー
+    const generatedKeys = useRef(new Set<string>());
 
-    useEffect(() => {
-        timelineRef.current = timeline;
-        // 並び替え・複製・削除などで「次のカット」が変わった可能性があるので先読みし直す
-        prepareNext();
-    }, [timeline]);
-    useEffect(() => { transitionRef.current = transition; }, [transition]);
-
-    // フェード用の透明度（1=表示, 0=真っ黒）
-    const opacity = useRef<Record<PlayerKey, Animated.Value>>({
-        A: new Animated.Value(1),
-        B: new Animated.Value(0),
-    }).current;
-
-    const animateTo = (value: Animated.Value, to: number) =>
-        new Promise<void>((resolve) => {
-            Animated.timing(value, {
-                toValue: to,
-                duration: FADE_MS,
-                useNativeDriver: true,
-            }).start(() => resolve());
-        });
-
-    // 指定カットをプレーヤーに読み込む
+    // カットを指定したプレーヤーに読み込む
     const loadCutInto = (key: PlayerKey, cut: Cut, seekMs = cut.startMs) =>
         new Promise<void>((resolve) => {
             const player = getPlayer(key);
@@ -205,18 +185,17 @@ export default function EditorScreen() {
                 resolve();
                 return;
             }
-            // このプレーヤーに載るカットを記録する
+            // このプレーヤーに載るカットを記録
             setShownCuts((prev) => ({ ...prev, [key]: cut }));
-            // 新しい読み込みを始めた時点で、以前の「先読み完了」記録は無効にする
+            // 新しい読み込みを始めた時点で、以前の先読み完了記録を無効に
             prepared.current[key] = null;
             if (loadedClip.current[key] === cut.clipId && player.status === 'readyToPlay') {
-                // 読み込み済みの同じclip → すぐシークできる
+                // 読み込み済みの同じ元動画ならすぐにシーク
                 player.currentTime = seekMs / 1000;
                 resolve();
                 return;
             }
-            // 差し替え直後・読み込み中はシークできないので位置を「予約」して、
-            // statusChangeがreadyToPlayになった時にシークする（scenes.tsxと同じ方式）
+            // 差し替え直後・読み込み中はシークできないので位置を予約
             pendingSeek.current[key] = { seekMs, resolve };
             if (loadedClip.current[key] !== cut.clipId) {
                 loadedClip.current[key] = cut.clipId;
@@ -226,7 +205,7 @@ export default function EditorScreen() {
             }
         });
 
-    // 「表」のプレーヤーでカットを表示する（先頭から再生・シーク・削除後の復帰などに使う）
+    // 表のプレーヤーでカットを表示する
     const showCutOnActive = async (cut: Cut, opts: { autoplay: boolean; seekMs?: number }) => {
         const key = activeKeyRef.current;
         const other: PlayerKey = key === 'A' ? 'B' : 'A';
@@ -235,22 +214,18 @@ export default function EditorScreen() {
         setPlayingCutId(cut.cutId);
         ignoreTimeUpdateUntil.current = Date.now() + 300;
 
-        // クロスフェード途中だった場合に備えて、表を不透明・裏を透明に戻す
-        opacity[key].setValue(1);
-        opacity[other].setValue(0);
+        // 裏のプレーヤーは止める
         getPlayer(other).pause();
 
         await loadCutInto(key, cut, opts.seekMs ?? cut.startMs);
         if (opts.autoplay) getPlayer(key).play();
         else getPlayer(key).pause();
 
-        // 次のカットを裏のプレーヤーに先読みしておく
+        // 次のカットを裏のプレーヤーに先読み
         prepareNext();
     };
 
     // 次のカットを「裏」のプレーヤーに先読みしておく（動画切り替え時のラグ対策）
-    // いまのカットを再生している間に、裏でreplaceAsync＆シークまで済ませておくことで、
-    // advance()での切り替えが「play()して手前に重ねるだけ」になり、待ち時間がなくなる
     const prepareNext = async () => {
         if (advancing.current) return; // 切り替え中はadvance側に任せる
         const list = timelineRef.current;
@@ -265,7 +240,7 @@ export default function EditorScreen() {
         prepared.current[standbyKey] = next.cutId; // 完了を記録
     };
 
-    // 次のカットへ進む（カットの再生が終端に達した時に呼ばれる）
+    // 次のカットへ進む
     const advance = async () => {
         if (advancing.current) return;
         advancing.current = true;
@@ -277,47 +252,43 @@ export default function EditorScreen() {
             const oldPlayer = getPlayer(oldKey);
 
             if (!next) {
-                // 最後のカットまで再生し終えた → 停止（バーは満タンのまま止まる）
+                // 最後のカットまで再生し終えたら再生停止
                 oldPlayer.pause();
                 return;
             }
 
-            // 1. 次のカットを「裏」のプレーヤーに先に読み込んでおく（読み込み済みならそのまま用いる）
+            // 次のカットを裏のプレーヤーに読み込み
             const newKey: PlayerKey = oldKey === 'A' ? 'B' : 'A';
             const newPlayer = getPlayer(newKey);
             if (prepared.current[newKey] !== next.cutId) {
                 await loadCutInto(newKey, next);
             }
-            prepared.current[newKey] = null; // これから再生するので「先読み」ではなくなる
-            newPlayer.muted = mutedRef.current;
+            prepared.current[newKey] = null;
 
-            // 2. 表裏を交代して、次のカットの再生を始める（この時点では手前はまだ透明）
+            // 表裏を瞬時に交代して次のカットの再生を始める
             playingCutIdRef.current = next.cutId;
             setPlayingCutId(next.cutId);
             ignoreTimeUpdateUntil.current = Date.now() + 300;
             activeKeyRef.current = newKey;
-            setActiveKey(newKey); // zIndexが手前になる
+            setActiveKey(newKey); // 表になったプレーヤーだけが画面に見える
+
             newPlayer.play();
-
-            if (transitionRef.current === 'fade') {
-                // 3. クロスフェード:
-                //    奥では前のカットがそのまま再生を続け、
-                //    手前で次のカットが透明→不透明に変わることで「徐々に切り替わる」
-                opacity[newKey].setValue(0);
-                await animateTo(opacity[newKey], 1);
-            } else {
-                opacity[newKey].setValue(1);
-            }
-
-            // 4. 前のカット側は裏に回して停止
-            oldPlayer.pause();
-            opacity[oldKey].setValue(0);
+            oldPlayer.pause(); // 前のカット側は裏に回して停止
         } finally {
             advancing.current = false;
         }
 
+        // その次のカットを先読み
         prepareNext();
     };
+
+    // 並び替え・複製・削除など
+    useEffect(() => {
+        timelineRef.current = timeline;
+        // 次のカットが変わった可能性があるので先読みし直し
+        prepareNext();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [timeline]);
 
     // プレーヤーの状態をUIに反映
     useEffect(() => {
@@ -335,7 +306,7 @@ export default function EditorScreen() {
             subs.push(
                 player.addListener('statusChange', ({ status }) => {
                     if (key === activeKeyRef.current) setIsReady(status === 'readyToPlay');
-                    // 予約されたシークがあれば実行し、待っているPromiseを解決する
+                    // 予約されたシークがあれば実行し、待っているPromiseを解決
                     const pending = pendingSeek.current[key];
                     if (status === 'readyToPlay' && pending) {
                         player.currentTime = pending.seekMs / 1000;
@@ -367,19 +338,14 @@ export default function EditorScreen() {
                     const relSec = Math.min(Math.max(currentTime - startSec, 0), lengthSec);
                     setElapsedMs(beforeMs + relSec * 1000);
 
-                    // カットの終わりに達したら、自動的に次のカットへ。
-                    // クロスフェード時は、フェード分だけ早めに切り替えを始める
-                    // （手前のフェードインが終わる頃に、ちょうどこのカットが終端に達する）
-                    const hasNext = idx < list.length - 1;
-                    const fadeSec =
-                        hasNext && transitionRef.current === 'fade' ? FADE_MS / 1000 : 0;
-                    if (currentTime >= endSec - fadeSec) {
+                    // カットの終わりに達したら、自動的に次のカットへ
+                    if (currentTime >= endSec) {
                         advance();
                     }
                 })
             );
 
-            // 動画ファイル自体の終端に達した場合（カットの終わり＝動画の終わりのケースの保険）
+            // 動画ファイル自体の終端に達した場合
             subs.push(
                 player.addListener('playToEnd', () => {
                     if (key === activeKeyRef.current) advance();
@@ -388,7 +354,6 @@ export default function EditorScreen() {
         });
 
         return () => subs.forEach((s) => s.remove());
-        // リスナー内ではref経由で最新値を読むので、登録は初回の1回だけでよい
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -406,63 +371,7 @@ export default function EditorScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [clipMap]);
 
-    // 再生/停止の切り替え
-    const togglePlay = () => {
-        const active = getPlayer(activeKeyRef.current);
-        if (isPlaying) {
-            active.pause();
-            return;
-        }
-        if (timeline.length === 0) return;
-
-        const idx = timeline.findIndex((c) => c.cutId === playingCutIdRef.current);
-        if (idx === -1) {
-            // 再生対象を見失っている（削除直後など）→ 先頭から
-            setElapsedMs(0);
-            showCutOnActive(timeline[0], { autoplay: true });
-            return;
-        }
-        const cut = timeline[idx];
-        const isLast = idx === timeline.length - 1;
-        // 最後のカットの終端(誤差0.05秒許容)で止まっている → 先頭から再生し直す
-        if (isLast && active.currentTime >= cut.endMs / 1000 - 0.05) {
-            setElapsedMs(0);
-            showCutOnActive(timeline[0], { autoplay: true });
-            return;
-        }
-        active.play();
-    };
-
-    // シークバーがタップされたら、タイムライン全体の位置として再生位置を変える
-    const handleSeek = (e: GestureResponderEvent) => {
-        const totalMs = timeline.reduce((sum, c) => sum + (c.endMs - c.startMs), 0);
-        if (!barWidth || totalMs <= 0) return;
-
-        const ratio = Math.min(Math.max(e.nativeEvent.locationX / barWidth, 0), 1);
-        const wasPlaying = getPlayer(activeKeyRef.current).playing;
-
-        // バーの0〜100%を「どのカットの何ms地点か」に変換する
-        let rest = ratio * totalMs;
-        for (let i = 0; i < timeline.length; i++) {
-            const cut = timeline[i];
-            const len = cut.endMs - cut.startMs;
-            if (rest <= len || i === timeline.length - 1) {
-                showCutOnActive(cut, {
-                    autoplay: wasPlaying,
-                    seekMs: cut.startMs + Math.min(rest, len),
-                });
-                break;
-            }
-            rest -= len;
-        }
-        setElapsedMs(ratio * totalMs); // UIに即反映
-    };
-
-    /* サムネイル生成（scenes.tsxと同じ仕組み。キーは clipId:startMs） */
-    const [thumbs, setThumbs] = useState<Record<string, string>>({});
-    // 生成済み(生成中)のキー。同じサムネを二重生成しないための記録
-    const generatedKeys = useRef(new Set<string>());
-
+    // サムネイル生成
     useEffect(() => {
         let cancelled = false; // 画面を離れた後にsetStateしないためのフラグ
 
@@ -496,37 +405,86 @@ export default function EditorScreen() {
         };
     }, [timeline, clipMap]);
 
-    // 選択中のカット
-    const selectedCut = timeline.find((c) => c.cutId === selectedCutId) ?? null;
+    // 再生/停止の切り替え
+    const togglePlay = () => {
+        const active = getPlayer(activeKeyRef.current);
+        if (isPlaying) {
+            active.pause();
+            return;
+        }
+        if (timeline.length === 0) return;
 
-    // タイムラインのカットをタップ: 選択 + そのカットから即座に再生
+        const idx = timeline.findIndex((c) => c.cutId === playingCutIdRef.current);
+        if (idx === -1) {
+            // 再生対象を見失っている場合（削除直後など）、先頭から再生
+            setElapsedMs(0);
+            showCutOnActive(timeline[0], { autoplay: true });
+            return;
+        }
+        const cut = timeline[idx];
+        const isLast = idx === timeline.length - 1;
+        // 最後のカットの終端(誤差0.05秒許容)で止まっている場合、先頭から再生
+        if (isLast && active.currentTime >= cut.endMs / 1000 - 0.05) {
+            setElapsedMs(0);
+            showCutOnActive(timeline[0], { autoplay: true });
+            return;
+        }
+        active.play();
+    };
+
+    // シークバーがタップされたら、タイムライン全体の位置として再生位置を変える
+    const handleSeek = (e: GestureResponderEvent) => {
+        const totalMs = timeline.reduce((sum, c) => sum + (c.endMs - c.startMs), 0);
+        if (!barWidth || totalMs <= 0) return;
+
+        const ratio = Math.min(Math.max(e.nativeEvent.locationX / barWidth, 0), 1);
+        const wasPlaying = getPlayer(activeKeyRef.current).playing;
+
+        // バーの0〜100%を「どのカットの何ms地点か」に変換する
+        let rest = ratio * totalMs;
+        for (let i = 0; i < timeline.length; i++) {
+            const cut = timeline[i];
+            const len = cut.endMs - cut.startMs;
+            if (rest <= len || i === timeline.length - 1) {
+                showCutOnActive(cut, {
+                    autoplay: wasPlaying,
+                    seekMs: cut.startMs + Math.min(rest, len),
+                });
+                break;
+            }
+            rest -= len;
+        }
+        setElapsedMs(ratio * totalMs); // UIに即反映
+    };
+
+    // タイムラインのカットをタップ
     const handleSelectCut = (cut: Cut) => {
         setSelectedCutId(cut.cutId);
 
-        // 進捗バーをこのカットの先頭位置に合わせる（前のカットの合計時間 = このカットの開始位置）
+        // シークバーをこのカットの先頭位置に合わせる（前のカットの合計時間 = このカットの開始位置）
         const idx = timeline.findIndex((c) => c.cutId === cut.cutId);
         const beforeMs = timeline
             .slice(0, idx)
             .reduce((sum, c) => sum + (c.endMs - c.startMs), 0);
         setElapsedMs(beforeMs);
 
-        // 表のプレーヤーに読み込んで即再生（再生中だったカットは中断される。
-        // 同じカットをもう一度タップした場合は、そのカットの先頭からやり直しになる）
+        // プレーヤーに読み込んで即再生
         showCutOnActive(cut, { autoplay: true });
     };
 
+    // カット編集シートを開く
     const handleOpenCropSheet = () => {
         if (!selectedCut) return;
-        getPlayer(activeKeyRef.current).pause(); // 背面のプレビューを止めてから開く
+        getPlayer(activeKeyRef.current).pause(); // 背面のプレビューを止める
         setShowCropSheet(true);
     };
 
+    // カット編集シートを閉じる
     const handleCloseCropSheet = (lastCutId: string) => {
         setShowCropSheet(false);
-        setSelectedCutId(lastCutId); // シートで最後に触っていたカットを選択状態にする
+        setSelectedCutId(lastCutId); // シートで最後に選択していたカットを選択状態にする
 
-        // シートが閉じる(アンマウントされる)時に編集内容がstoreへ保存されるので、
-        // setTimeoutで「保存が終わった後」に最新のカットをプレビューへ読み込み直す
+        //編集内容をstoreへ保存した後、プレビューへ読み込み直す
         setTimeout(() => {
             const list = useEditStore.getState().timeline;
             const idx = list.findIndex((c) => c.cutId === lastCutId);
@@ -537,13 +495,13 @@ export default function EditorScreen() {
         }, 0);
     };
 
-    // 複製: storeが選択カットの直後に同じ内容(別cutId)を挿入
+    // 複製（storeが選択カットの直後に同じ内容(別cutId)を挿入）
     const handleDuplicate = () => {
         if (!selectedCut) return;
         duplicateCut(selectedCut.cutId);
     };
 
-    // 削除: 選択とプレビューの整合を取りながらstoreから消す
+    // 削除（選択とプレビューの整合を取りながらstoreから消す）
     const handleRemove = () => {
         if (!selectedCut) return;
         const idx = timeline.findIndex((c) => c.cutId === selectedCut.cutId);
@@ -573,8 +531,15 @@ export default function EditorScreen() {
         }
     };
 
-    // タイムラインの1カット分の描画（DraggableFlatListから呼ばれる）
-    //   item: このカットのデータ / drag: 呼ぶとドラッグが始まる関数 / isActive: いまドラッグ中かどうか / getIndex: 現在の並び位置
+    // 選択中のカット
+    const selectedCut = timeline.find((c) => c.cutId === selectedCutId) ?? null;
+    // タイムライン全体の長さ
+    const totalMs = timeline.reduce((sum, c) => sum + (c.endMs - c.startMs), 0);
+    // シークバー
+    const progressValue = totalMs > 0 ? Math.min((elapsedMs / totalMs) * 100, 100) : 0;
+
+    // タイムラインの1カット分の描画
+    // item: このカットのデータ / drag: ドラッグする関数 / isActive: いまドラッグ中かどうか / getIndex: 現在の並び位置
     const renderCutItem = ({ item: cut, drag, isActive, getIndex }: RenderItemParams<Cut>) => {
         const index = getIndex() ?? 0;
         const isSelected = cut.cutId === selectedCutId;
@@ -587,13 +552,12 @@ export default function EditorScreen() {
                     <View
                         className={`h-[2px] w-4 ${index > 0 && !isActive ? 'bg-gray-300' : 'bg-transparent'}`}
                     />
-                    {/* タップで選択＋そのカットから即座に再生 */}
                     <Pressable
                         onPress={() => handleSelectCut(cut)}
                         disabled={isActive}
                         className={`overflow-hidden rounded-lg border-2 ${isSelected ? 'border-primary' : 'border-transparent'}`}
                     >
-                        {/* サムネイル（生成中はグレーのプレースホルダー） */}
+                        {/* サムネイル */}
                         {thumb ? (
                             <Image
                                 source={{ uri: thumb }}
@@ -603,7 +567,7 @@ export default function EditorScreen() {
                         ) : (
                             <View style={{ width: 80, height: 80 }} className="bg-slate-200" />
                         )}
-                        {/* 並び替え用ハンドル: 長押しでドラッグ開始 */}
+                        {/* 並び替え用ハンドル */}
                         <Pressable
                             onLongPress={drag}
                             delayLongPress={150}
@@ -631,11 +595,7 @@ export default function EditorScreen() {
         );
     };
 
-    // タイムライン全体の長さと進捗
-    const totalMs = timeline.reduce((sum, c) => sum + (c.endMs - c.startMs), 0);
-    const progressValue = totalMs > 0 ? Math.min((elapsedMs / totalMs) * 100, 100) : 0;
-
-    // プロジェクトIDがそもそも無い場合、プロジェクト作成画面へ誘導する
+    // プロジェクトIDがそもそも無い場合、プロジェクト作成画面へ誘導
     if (!id) {
         return (
             <SafeAreaView className="flex-1 items-center justify-center gap-4 bg-white">
@@ -650,8 +610,7 @@ export default function EditorScreen() {
         );
     }
 
-    // idはあるが、シーンを1つも選ばずに来た場合など → シーン選択画面へ誘導する
-    // （back()だと直前の画面に依存するので、明示的にscenesへreplaceする）
+    // idはあるが、シーンを1つも選ばずに来た場合、シーン選択画面へ誘導
     if (timeline.length === 0) {
         return (
             <SafeAreaView className="flex-1 items-center justify-center gap-4 bg-white">
@@ -705,7 +664,7 @@ export default function EditorScreen() {
                     {(['A', 'B'] as const).map((key) => {
                         const layout = videoLayoutFor(shownCuts[key], playerSize, clipMap);
                         return (
-                            <Animated.View
+                            <View
                                 key={key}
                                 style={{
                                     position: 'absolute',
@@ -713,8 +672,8 @@ export default function EditorScreen() {
                                     left: 0,
                                     right: 0,
                                     bottom: 0,
-                                    opacity: opacity[key],
-                                    zIndex: activeKey === key ? 2 : 1, // 表のプレーヤーを手前に
+                                    opacity: isFront ? 1 : 0, // 裏は完全に見えない
+                                    zIndex: isFront ? 2 : 1, // 表を手前に
                                 }}
                             >
                                 <VideoView
@@ -726,11 +685,10 @@ export default function EditorScreen() {
                                         left: layout.left,
                                         top: layout.top,
                                     }}
-                                    // サイズは縦横比を保ってこちらで計算済みなので、styleどおりに広げる
                                     contentFit="fill"
                                     nativeControls={false}
                                 />
-                            </Animated.View>
+                            </View>
                         );
                     })}
                 </View>
@@ -777,7 +735,7 @@ export default function EditorScreen() {
                         className="absolute bottom-10 right-4 z-10 w-60 rounded-xl bg-white p-3 shadow-md shadow-gray-300"
                         style={{ elevation: 8 }}
                     >
-                        {/* カット秒数: 押すと選択肢のポップアップ(サブメニュー)が開く */}
+                        {/* カット秒数 */}
                         <Pressable
                             className="h-9 flex-row items-center justify-between"
                             onPress={() => setShowCutSecMenu((v) => !v)}
@@ -794,8 +752,7 @@ export default function EditorScreen() {
                                 value={muted}
                                 onValueChange={(v) => {
                                     setMuted(v);
-                                    mutedRef.current = v;
-                                    // 2つのプレーヤー両方に反映する
+                                    // 2つのプレーヤー両方に反映
                                     playerA.muted = v;
                                     playerB.muted = v;
                                 }}
@@ -804,7 +761,7 @@ export default function EditorScreen() {
                         </View>
                         <View className="h-9 flex-row items-center justify-between">
                             <Text className="text-sm">フェード</Text>
-                            {/* store(editStore)のtransitionに保存する。renderリクエストにもこの値が使われる */}
+                            {/* store(editStore)のtransitionに保存する */}
                             <Switch
                                 value={transition === 'fade'}
                                 onValueChange={(v) => setTransition(v ? 'fade' : 'none')}
@@ -814,7 +771,7 @@ export default function EditorScreen() {
                     </View>
                 )}
 
-                {/* カット秒数の選択肢ポップアップ（「カット秒数」行を押すと開くサブメニュー） */}
+                {/* カット秒数の選択肢ポップアップ */}
                 {showSettings && showCutSecMenu && (
                     <View
                         className="absolute bottom-36 right-14 z-20 w-28 rounded-xl bg-white p-2 shadow-md shadow-gray-300"
@@ -824,7 +781,7 @@ export default function EditorScreen() {
                             <Pressable
                                 key={sec}
                                 onPress={() => {
-                                    setCutSec(sec); // 全カットの長さが引き直される(シーンの範囲は超えない)
+                                    setCutSec(sec);
                                     setShowCutSecMenu(false);
                                 }}
                                 className="h-9 flex-row items-center justify-between px-2"
@@ -857,8 +814,6 @@ export default function EditorScreen() {
                     renderItem={renderCutItem}
                     // ドラッグを離した時に呼ばれる。storeの並び順を更新する
                     onDragEnd={({ from, to }) => moveCut(from, to)}
-                    // FlatListはdata(timeline)が変わった時しか各行を再描画しない。
-                    // data以外の値の変化も反映させるために渡す
                     extraData={[selectedCutId, playingCutId, isPlaying, thumbs]}
                     showsHorizontalScrollIndicator={false}
                     style={{ flexGrow: 0, marginTop: 4 }}
@@ -912,7 +867,7 @@ export default function EditorScreen() {
                         {/* 切りぬきを調整 */}
                         <Pressable
                             className="items-center rounded-lg bg-primary py-2"
-                            onPress={ handleOpenCropSheet }
+                            onPress={handleOpenCropSheet}
                         >
                             <View className="flex-row items-center gap-2">
                                 <MaterialCommunityIcons name="content-cut" size={18} color="white" />
@@ -943,6 +898,8 @@ export default function EditorScreen() {
                     </View>
                 )}
             </View>
+
+            {/* 切りぬきを調整シート */}
             {showCropSheet && selectedCut && (
                 <CutAdjustSheet
                     initialCutId={selectedCut.cutId}
