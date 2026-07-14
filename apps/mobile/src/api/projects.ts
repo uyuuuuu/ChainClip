@@ -5,6 +5,8 @@ type CreateProjectResponse = components["schemas"]["CreateProjectResponse"];
 type GetProjectStatusResponse =
   components["schemas"]["GetProjectStatusResponse"];
 type StartPrepareResponse = components["schemas"]["StartPrepareResponse"];
+type StartRenderRequest = components["schemas"]["StartRenderRequest"];
+type StartRenderResponse = components["schemas"]["StartRenderResponse"];
 
 /**
  * POST /projects
@@ -45,6 +47,25 @@ export async function startPrepare(
     {
       method: "POST",
       projectId,
+    },
+  );
+}
+
+/**
+ * POST /projects/{projectId}/render
+ * editConfig を保存し render worker を起動する。project.status = rendering になる。
+ * accessToken は apiFetch が projectId から解決し Authorization ヘッダに付与する。
+ */
+export async function startRender(
+  projectId: string,
+  body: StartRenderRequest,
+): Promise<StartRenderResponse> {
+  return await apiFetch<StartRenderResponse>(
+    `/projects/${projectId}/render`,
+    {
+      method: "POST",
+      projectId,
+      body: JSON.stringify(body),
     },
   );
 }
