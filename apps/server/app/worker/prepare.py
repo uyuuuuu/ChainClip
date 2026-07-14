@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from app.infra.storage import gcs
 from app.infra.video import ffmpeg
 from app.domain import detection
 from app.infra.video import intelligence
+from app.domain.detection import LabelTrack
 
 GCS_BUCKET_NAME = "GCS_BUCKET_NAME"
 
@@ -81,7 +83,19 @@ def _prepare_clip(clip_repo: ClipRepo, asset_repo: AssetRepo, clip: Clip) -> Non
             converted_path = Path(tmp_dir) / "converted.mp4"
 
             gcs.download_file(clip.original_object_key(), original_path)
-            ffmpeg.convert_to_mp4(original_path, converted_path)
+
+            # ffmpeg変換(CPU処理)とVideo Intelligence解析(API呼び出し・待ちが主)は
+            # どちらも元ファイルだけを入力にしており依存関係がないため、
+            # スレッドで並列に走らせて合計の待ち時間を縮める。
+            # 解析は元ファイルのGCS URIをそのまま渡す(変換後mp4を待たない)。
+            original_uri = f"gs://{bucket_name}/{clip.original_object_key()}"
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                convert_future = executor.submit(ffmpeg.convert_to_mp4, original_path, converted_path)
+                labels_future = executor.submit(intelligence.fetch_labels, gcs_uri=original_uri)
+
+                convert_future.result()
+                tracks: list[LabelTrack] = labels_future.result()
+
             probe = ffmpeg.probe(converted_path)
 
             converted_key = gcs.upload_file(
@@ -102,10 +116,8 @@ def _prepare_clip(clip_repo: ClipRepo, asset_repo: AssetRepo, clip: Clip) -> Non
                 )
             )
 
-            # 変換後mp4を Video Intelligence API で解析し、シーン区間を検出する。
-            # 解析対象は変換後mp4のGCS URI（startMs/endMsを変換後mp4基準にするため）。
-            converted_uri = f"gs://{bucket_name}/{converted_key}"
-            tracks = intelligence.fetch_labels(gcs_uri=converted_uri)
+            # startMs/endMsは変換後mp4の長さに合わせて組み立てる(下流のrender workerが
+            # 変換後mp4に対して切り出すため)。解析自体は元ファイル基準で行っている。
             scenes = detection.detect_scenes(tracks, duration_ms=probe.duration_ms)
  
             # get_project_status.py が読むのは startMs / endMs / labels のみ。
