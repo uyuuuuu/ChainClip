@@ -120,7 +120,8 @@ def test_get_project_status_returns_clip_video_and_scenes_when_ready(mock_url, m
 
 
 def test_get_project_status_returns_share_url_and_video_url_when_completed(monkeypatch) -> None:
-    """completed状態ではshare_slugから組み立てたshare_urlと完成動画のfinal_video_urlを返す。"""
+    """completed状態ではshare_slugから組み立てたshare_urlと完成動画のfinal_video_url、
+    renderingで保存したtitle/descriptionを返す。"""
     monkeypatch.setenv("WEB_BASE_URL", "https://chainclip.example.com")
     project_repo = FakeProjectRepo()
     clip_repo = FakeClipRepo()
@@ -130,6 +131,7 @@ def test_get_project_status_returns_share_url_and_video_url_when_completed(monke
     project.mark_uploaded()
     project.mark_preparing()
     project.mark_ready()
+    project.mark_rendering(title="夏の思い出", description="海に行ったときの動画", edit_config={})
     project.mark_completed()
     project_repo.create(project)
 
@@ -150,6 +152,8 @@ def test_get_project_status_returns_share_url_and_video_url_when_completed(monke
 
     assert result.share_url == f"https://chainclip.example.com/s/{project.share_slug}"
     assert result.final_video_url == "https://videos.example.com/final/x.mp4"
+    assert result.title == "夏の思い出"
+    assert result.description == "海に行ったときの動画"
 
 
 def test_get_project_status_returns_error_info_when_failed() -> None:

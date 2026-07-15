@@ -264,6 +264,10 @@ export interface components {
             shareUrl?: string | null;
             /** Finalvideourl */
             finalVideoUrl?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
