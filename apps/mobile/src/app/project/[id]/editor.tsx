@@ -733,7 +733,7 @@ export default function EditorScreen() {
                 {/* 設定ポップアップ */}
                 {showSettings && (
                     <View
-                        className="absolute bottom-10 right-4 z-10 w-60 rounded-xl bg-white p-3 shadow-md shadow-gray-300"
+                        className="absolute bottom-10 right-4 z-10 w-60 rounded-xl bg-white p-3 shadow-md shadow-black/20"
                         style={{ elevation: 8 }}
                     >
                         {/* カット秒数 */}
@@ -778,7 +778,7 @@ export default function EditorScreen() {
                 {/* カット秒数の選択肢ポップアップ */}
                 {showSettings && showCutSecMenu && (
                     <View
-                        className="absolute bottom-36 right-14 z-20 w-28 rounded-xl bg-white p-2 shadow-md shadow-gray-300"
+                        className="absolute bottom-36 right-14 z-20 w-28 rounded-xl bg-white p-2 shadow-md shadow-black/20"
                         style={{ elevation: 9 }}
                     >
                         {[3, 5, 10].map((sec) => (
