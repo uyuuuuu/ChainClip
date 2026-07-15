@@ -19,6 +19,7 @@ class Transform:
     zoom: float
     offset_x: float
     offset_y: float
+    rotation: Literal[0, 90, 180, 270] = 0
 
 
 @dataclass
@@ -60,6 +61,7 @@ def _cut_from_dict(data: dict[str, Any]) -> Cut:
             zoom=data["transform"]["zoom"],
             offset_x=data["transform"]["offsetX"],
             offset_y=data["transform"]["offsetY"],
+            rotation=data["transform"].get("rotation", 0),
         ),
     )
 
@@ -73,13 +75,19 @@ def crop_rect(
     zoom: float,
     offset_x: float,
     offset_y: float,
+    rotation: Literal[0, 90, 180, 270] = 0,
 ) -> tuple[int, int, int, int]:
     """zoom/offsetから元フレーム上の切り抜き矩形(width, height, x, y)を計算する。
 
     zoom=1.0では出力の縦横比を保ったまま元フレームに収まる最大範囲を切り抜く。
     offset_x/offset_yは中央からのずれを正規化座標(-1.0〜1.0)で表し、
     切り抜き矩形が動ける範囲に対する割合として扱う。
+    rotationが90/270度の場合、ffmpeg側で先にtransposeしてから切り抜くため、
+    ここでの src_width/src_height も回転後(=transpose後)の実効サイズに置き換える。
     """
+    if rotation in (90, 270):
+        src_width, src_height = src_height, src_width
+
     target_ratio = target_width / target_height
     src_ratio = src_width / src_height
 

@@ -42,6 +42,7 @@ export function useStartRender() {
             zoom: cut.transform.zoom,
             offsetX: cut.transform.offsetX,
             offsetY: cut.transform.offsetY,
+            rotation: cut.transform.rotation,
           },
         })),
       };

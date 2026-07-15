@@ -156,6 +156,23 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
     const startMsRef = useRef(cut.startMs);
     const transformRef = useRef<Transform>({ ...cut.transform });
 
+    // 90/270度回転時は、切り抜き計算上の縦横が入れ替わる
+    const effectiveSize = useMemo(() => {
+        if (!clip) return null;
+        const swapped = transform.rotation === 90 || transform.rotation === 270;
+        return swapped
+            ? { width: clip.height, height: clip.width }
+            : { width: clip.width, height: clip.height };
+    }, [clip, transform.rotation]);
+
+    // 90度ずつ回転させる（見た目だけでなく、切り抜き計算にも影響する）
+    const rotate = () => {
+        applyTransform({
+            ...transformRef.current,
+            rotation: (((transformRef.current.rotation + 90) % 360) as Transform['rotation']),
+        });
+    };
+
     const applyStartMs = (v: number) => {
         startMsRef.current = v;
         setStartMs(v);
@@ -164,14 +181,19 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
     // 切り抜き枠が動画からはみ出さないようにzoom/offsetを丸める
     const clampTransform = (t: Transform): Transform => {
         const zoom = clamp(t.zoom, ZOOM_MIN, ZOOM_MAX);
-        if (!clip) return { zoom, offsetX: 0, offsetY: 0 };
-        const side = Math.min(clip.width, clip.height) / zoom; // 切り抜き正方形の一辺(動画px)
-        const maxX = (clip.width - side) / (2 * clip.width);
-        const maxY = (clip.height - side) / (2 * clip.height);
+        if (!clip) return { zoom, offsetX: 0, offsetY: 0, rotation: t.rotation };
+        // 回転後の実効サイズ(90/270度なら縦横入れ替え)を基準にクランプする
+        const swapped = t.rotation === 90 || t.rotation === 270;
+        const w = swapped ? clip.height : clip.width;
+        const h = swapped ? clip.width : clip.height;
+        const side = Math.min(w, h) / zoom; // 切り抜き正方形の一辺(動画px)
+        const maxX = (w - side) / (2 * w);
+        const maxY = (h - side) / (2 * h);
         return {
             zoom,
             offsetX: clamp(t.offsetX, -maxX, maxX),
             offsetY: clamp(t.offsetY, -maxY, maxY),
+            rotation: t.rotation,
         };
     };
 
@@ -256,23 +278,24 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
     }, [box]);
     
     const video = useMemo(() => {
-        if (!clip || !frame) return null;
-        // 動画上の切り抜き正方形の一辺(動画px)
-        const cropSide = Math.min(clip.width, clip.height) / transform.zoom;
-        // 動画px → 画面px の倍率。「動画上のcropSide = 画面上のframe.side」になる倍率
+        if (!clip || !frame || !effectiveSize) return null;
+        // 回転後の実効サイズ(90/270度なら縦横入れ替え)を基準に計算する
+        const { width: eW, height: eH } = effectiveSize;
+        // 動画上の切り抜き正方形の一辺(実効px)
+        const cropSide = Math.min(eW, eH) / transform.zoom;
+        // 実効px → 画面px の倍率。「実効px上のcropSide = 画面上のframe.side」になる倍率
         const scale = frame.side / cropSide;
+        // VideoViewは回転前の実サイズのまま描画し、CSSのrotateで見た目だけ回す
         const w = clip.width * scale;
         const h = clip.height * scale;
-        // 動画を「枠の中心が動画上の (0.5+offset) の位置」に来るよう配置する
-        // → 動画の中心は枠の中心から -offset ずれた場所
         return {
             w,
             h,
-            left: frame.left + frame.side / 2 - w / 2 - transform.offsetX * clip.width * scale,
-            top: frame.top + frame.side / 2 - h / 2 - transform.offsetY * clip.height * scale,
+            left: frame.left + frame.side / 2 - w / 2 - transform.offsetX * eW * scale,
+            top: frame.top + frame.side / 2 - h / 2 - transform.offsetY * eH * scale,
             scale,
         };
-    }, [clip, frame, transform]);
+    }, [clip, frame, effectiveSize, transform]);
 
     /* ---------- ジェスチャー（ドラッグ=位置 / ピンチ=サイズ） ---------- */
     // ジェスチャー開始時点の値。「開始時からどれだけ動いたか」で計算するとズレない
@@ -285,16 +308,28 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
             gestureBase.current = { ...transformRef.current };
         })
         .onUpdate((e) => {
-            if (!clip || !frame) return;
-            // ジェスチャー開始時のスケール(動画px→画面px)を、開始時のzoomから計算する
-            const scaleBase =
-                (frame.side * gestureBase.current.zoom) / Math.min(clip.width, clip.height);
+            if (!clip || !frame || !effectiveSize) return;
+            // ジェスチャー開始時のスケール(実効px→画面px)を、開始時のzoomから計算する
+            const { width: eW, height: eH } = effectiveSize;
+            const scaleBase = (frame.side * gestureBase.current.zoom) / Math.min(eW, eH);
+            // 画面上のtranslation(見た目の向き)を、回転前の動画座標系に戻す
+            const rotation = gestureBase.current.rotation;
+            const dx =
+                rotation === 90 ? e.translationY
+                : rotation === 180 ? -e.translationX
+                : rotation === 270 ? -e.translationY
+                : e.translationX;
+            const dy =
+                rotation === 90 ? -e.translationX
+                : rotation === 180 ? -e.translationY
+                : rotation === 270 ? e.translationX
+                : e.translationY;
             // 動画を指と同じ向きに動かす = 「枠の中心が動画上のどこか」は逆向きにずれる
             // → offset は translation と逆符号にする
             applyTransform({
-                zoom: transformRef.current.zoom,
-                offsetX: gestureBase.current.offsetX - e.translationX / (scaleBase * clip.width),
-                offsetY: gestureBase.current.offsetY - e.translationY / (scaleBase * clip.height),
+                ...transformRef.current,
+                offsetX: gestureBase.current.offsetX - dx / (scaleBase * eW),
+                offsetY: gestureBase.current.offsetY - dy / (scaleBase * eH),
             });
         });
 
@@ -393,6 +428,8 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
                                 width: video.w,
                                 height: video.h,
                                 pointerEvents: 'none',
+                                // 実サイズのまま配置し、見た目だけ回転させる
+                                transform: [{ rotate: `${transform.rotation}deg` }],
                             }}
                             pointerEvents="none"
                             // サイズは縦横比を保ってこちらで計算済みなので、styleどおりに広げる
@@ -496,6 +533,14 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
                             ))}
                         </View>
                     )}
+                    {/* 回転ボタン: 時計回りに90度ずつ */}
+                    <Pressable
+                        onPress={rotate}
+                        hitSlop={8}
+                        className="absolute right-2 top-2 rounded-full bg-black/50 p-1.5"
+                    >
+                        <MaterialCommunityIcons name="rotate-right" size={20} color="#ffffff" />
+                    </Pressable>
                 </View>
             </GestureDetector>
             <View className="mt-1 flex-row items-center justify-center gap-1">

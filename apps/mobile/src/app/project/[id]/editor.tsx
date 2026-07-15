@@ -37,25 +37,32 @@ const videoLayoutFor = (cut: Cut | null, containerSize: number, clipMap: ClipMap
     const clip = cut ? clipMap[cut.clipId] : undefined;
     if (!cut || !clip || !containerSize) {
         // 計算できないうちはコンテナいっぱいに表示しておく
-        return { width: '100%' as const, height: '100%' as const, left: 0, top: 0 };
+        return { width: '100%' as const, height: '100%' as const, left: 0, top: 0, rotation: 0 as const };
     }
     const { width: W, height: H } = clip;
-    const { zoom, offsetX, offsetY } = cut.transform;
+    const { zoom, offsetX, offsetY, rotation } = cut.transform;
 
-    // 切り抜く正方形の一辺(動画ピクセル)
-    const cropSide = Math.min(W, H) / zoom;
-    // 動画ピクセル → 画面px の倍率。「切り抜き正方形 = コンテナの一辺」になるように
+    // 90/270度回転時は、切り抜き計算上の縦横が入れ替わる(cutAdjustSheetの計算と揃える)
+    const swapped = rotation === 90 || rotation === 270;
+    const eW = swapped ? H : W;
+    const eH = swapped ? W : H;
+
+    // 切り抜く正方形の一辺(実効ピクセル)
+    const cropSide = Math.min(eW, eH) / zoom;
+    // 実効ピクセル → 画面px の倍率。「切り抜き正方形 = コンテナの一辺」になるように
     const scale = containerSize / cropSide;
 
-    // 切り抜き正方形の左上(動画ピクセル)
-    const cropLeft = (0.5 + offsetX) * W - cropSide / 2;
-    const cropTop = (0.5 + offsetY) * H - cropSide / 2;
+    // 切り抜き正方形の左上(実効ピクセル)
+    const cropLeft = (0.5 + offsetX) * eW - cropSide / 2;
+    const cropTop = (0.5 + offsetY) * eH - cropSide / 2;
 
     return {
-        width: W * scale,   // 動画全体の描画サイズ
+        // VideoView自体は回転前の実サイズのまま描画し、見た目だけCSSのrotateで回す
+        width: W * scale,
         height: H * scale,
         left: -cropLeft * scale, // 切り抜き位置がコンテナの左上に来るよう、動画をマイナス方向へずらす
         top: -cropTop * scale,
+        rotation,
     };
 };
 
@@ -701,6 +708,7 @@ export default function EditorScreen() {
                                         height: layout.height,
                                         left: layout.left,
                                         top: layout.top,
+                                        transform: [{ rotate: `${layout.rotation}deg` }],
                                     }}
                                     contentFit="fill"
                                     nativeControls={false}

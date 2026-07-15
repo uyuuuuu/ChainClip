@@ -39,6 +39,14 @@ def convert_to_mp4(input_path: Path, output_path: Path) -> None:
         raise FfmpegConversionError(result.stderr)
 
 
+_TRANSPOSE_FILTERS: dict[int, str] = {
+    0: "",
+    90: "transpose=1,",  # 時計回りに90度
+    180: "transpose=1,transpose=1,",
+    270: "transpose=2,",  # 反時計回りに90度(=時計回り270度)
+}
+
+
 def render_cut(
     input_path: Path,
     output_path: Path,
@@ -52,11 +60,17 @@ def render_cut(
     output_width: int,
     output_height: int,
     fps: int,
+    rotation: int = 0,
 ) -> None:
-    """変換後mp4から1カット分を切り出し、crop→scaleでtransform・output解像度に整形する。"""
+    """変換後mp4から1カット分を切り出し、rotate→crop→scaleでtransform・output解像度に整形する。
+
+    crop_width/height/x/yは回転後(transpose後)の座標系で計算済みの値を渡すこと。
+    """
     start_sec = start_ms / 1000
     duration_sec = (end_ms - start_ms) / 1000
+    transpose = _TRANSPOSE_FILTERS.get(rotation, "")
     filter_expr = (
+        f"{transpose}"
         f"crop={crop_width}:{crop_height}:{crop_x}:{crop_y},"
         f"scale={output_width}:{output_height},fps={fps}"
     )

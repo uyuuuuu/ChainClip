@@ -121,6 +121,7 @@ def _render(clip_repo: ClipRepo, edit_config: EditConfig, tmp_dir: Path) -> Path
             zoom=cut.transform.zoom,
             offset_x=cut.transform.offset_x,
             offset_y=cut.transform.offset_y,
+            rotation=cut.transform.rotation,
         )
 
         segment_path = tmp_dir / f"segment_{index}.mp4"
@@ -133,6 +134,7 @@ def _render(clip_repo: ClipRepo, edit_config: EditConfig, tmp_dir: Path) -> Path
             crop_height=crop_height,
             crop_x=crop_x,
             crop_y=crop_y,
+            rotation=cut.transform.rotation,
             output_width=OUTPUT_WIDTH,
             output_height=OUTPUT_HEIGHT,
             fps=OUTPUT_FPS,
