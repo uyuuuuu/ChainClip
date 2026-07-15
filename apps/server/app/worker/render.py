@@ -21,6 +21,7 @@ from app.infra.db.repository import AssetRepo, ClipRepo, ProcessingJobRepo, Proj
 from app.infra.db.session import SessionLocal
 from app.infra.storage import gcs, r2
 from app.infra.video import ffmpeg
+from app.usecase.delete_project import gcs_prefixes
 
 R2_BUCKET_NAME = "R2_BUCKET_NAME"
 
@@ -73,9 +74,8 @@ def run(project_id: uuid.UUID) -> None:
             project.mark_completed()
             project_repo.update(project)
 
-            gcs.delete_prefix(f"original/{project.id}/")
-            gcs.delete_prefix(f"converted/{project.id}/")
-            gcs.delete_prefix(f"scenes/{project.id}/")
+            for prefix in gcs_prefixes(project.id):
+                gcs.delete_prefix(prefix)
 
             job.mark_succeeded(finished_at=datetime.now(timezone.utc))
             job_repo.update(job)

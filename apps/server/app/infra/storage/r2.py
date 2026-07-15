@@ -6,7 +6,7 @@ from pathlib import Path
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app.domain.error import R2UploadError
+from app.domain.error import R2UploadError, StorageDeleteError
 
 _client = None
 
@@ -41,3 +41,16 @@ def upload_file(key: str, source: Path, *, content_type: str) -> str:
 
     public_base_url = os.environ["R2_PUBLIC_BASE_URL"]
     return f"{public_base_url.rstrip('/')}/{key}"
+
+
+def delete_object(key: str) -> None:
+    """R2上のオブジェクトを削除する。
+
+    S3互換APIのdelete_objectは対象が存在しなくても成功を返すため、
+    既に削除済みのキーを渡しても例外にならない。
+    """
+    bucket_name = os.environ["R2_BUCKET_NAME"]
+    try:
+        _get_client().delete_object(Bucket=bucket_name, Key=key)
+    except (BotoCoreError, ClientError) as exc:
+        raise StorageDeleteError(f"failed to delete r2 object: {key}") from exc

@@ -28,3 +28,11 @@ class ClipNotFoundError(DomainError):
 
 class R2UploadError(DomainError):
     """R2への完成動画アップロードに失敗した場合。"""
+
+
+class StorageDeleteError(DomainError):
+    """GCS/R2上のファイル削除に失敗した場合。
+
+    対象が既に存在しない場合は削除済みとみなすためこの例外は投げない。
+    通信エラーや権限エラーなど、リトライで解消しうる失敗のみを表す。
+    """

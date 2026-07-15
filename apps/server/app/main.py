@@ -11,6 +11,7 @@ from app.domain.error import (
     InvalidClipError,
     InvalidProjectStateError,
     ProjectNotFoundError,
+    StorageDeleteError,
 )
 
 load_dotenv()
@@ -61,6 +62,12 @@ async def handle_invalid_clip(request: Request, exc: InvalidClipError) -> JSONRe
 @app.exception_handler(GcsObjectNotFoundError)
 async def handle_gcs_object_not_found(request: Request, exc: GcsObjectNotFoundError) -> JSONResponse:
     return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+
+@app.exception_handler(StorageDeleteError)
+async def handle_storage_delete_failed(request: Request, exc: StorageDeleteError) -> JSONResponse:
+    # ファイルを消しきれていないためDB行は残してある。クライアントは再度DELETEを呼べる。
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
 app.include_router(projects.router)
