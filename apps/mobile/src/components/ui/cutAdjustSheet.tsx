@@ -392,7 +392,9 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
                                 top: video.top,
                                 width: video.w,
                                 height: video.h,
+                                pointerEvents: 'none',
                             }}
+                            pointerEvents="none"
                             // サイズは縦横比を保ってこちらで計算済みなので、styleどおりに広げる
                             contentFit="fill"
                             nativeControls={false}

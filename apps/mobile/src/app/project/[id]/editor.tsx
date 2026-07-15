@@ -4,17 +4,18 @@ import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
 import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { buildClipMap, type ClipMap } from '@/lib/clipMap';
+import { useLocalClips } from '@/lib/localClips';
 import { useEditStore, type Cut } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, GestureResponderEvent, Image, Pressable, Switch, View } from 'react-native';
 import DraggableFlatList, { useOnCellActiveAnimation, type RenderItemParams } from 'react-native-draggable-flatlist';
 import Reanimated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 
 // 2つのプレーヤーの識別子
 // 表: いま画面に見えている方 / 裏: 次のカットを先読みしておく方
@@ -91,8 +92,8 @@ const CutScaleDecorator = ({ children }: { children: ReactNode }) => {
 export default function EditorScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
 
-    // サーバーの clips（署名付きURL・解像度・シーン）を clipId 引きの対応表にする。
-    // ready 済みなら scenes.tsx を通ってきているのでキャッシュから即取れる。
+    const { localUris } = useLocalClips(project?.clips);
+
     const { data: project } = useProjectStatus(id);
     const clipMap = useMemo<ClipMap>(() => buildClipMap(project?.clips), [project?.clips]);
 
@@ -173,8 +174,6 @@ export default function EditorScreen() {
     const advancing = useRef(false);
     // シーク直後に届く「古い再生位置」のイベントを無視する期限
     const ignoreTimeUpdateUntil = useRef(0);
-    // 生成済み(生成中)のサムネイルキー
-    const generatedKeys = useRef(new Set<string>());
 
     // カットを指定したプレーヤーに読み込む
     const loadCutInto = (key: PlayerKey, cut: Cut, seekMs = cut.startMs) =>
@@ -199,7 +198,8 @@ export default function EditorScreen() {
             pendingSeek.current[key] = { seekMs, resolve };
             if (loadedClip.current[key] !== cut.clipId) {
                 loadedClip.current[key] = cut.clipId;
-                player.replaceAsync(clip.videoUrl).catch((e) => {
+                const uri = localUris[cut.clipId] ?? clip.videoUrl;
+                player.replaceAsync(uri).catch((e) => {
                     console.warn('動画の差し替えが中断されました:', e);
                 });
             }
@@ -372,6 +372,8 @@ export default function EditorScreen() {
     }, [clipMap]);
 
     // サムネイル生成
+    const generatedKeys = useRef(new Set<string>());
+        
     useEffect(() => {
         let cancelled = false; // 画面を離れた後にsetStateしないためのフラグ
 
@@ -382,12 +384,13 @@ export default function EditorScreen() {
 
                 const clip = clipMap[cut.clipId];
                 if (!clip) continue; // clipMap未取得。次回(clipMap更新)にリトライさせるため記録しない
+                const localUri = localUris[cut.clipId];
+                if (!localUri) continue;
                 generatedKeys.current.add(key);
                 try {
-                    // サーバーの署名付きURLをそのまま渡してカット先頭フレームをサムネ化する
                     if (cancelled) return;
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(clip.videoUrl, {
-                        time: cut.startMs, // カットの先頭フレームをサムネに
+                    const { uri } = await VideoThumbnails.getThumbnailAsync(localUri, {
+                        time: scene.startMs,
                     });
                     if (!cancelled) {
                         setThumbs((prev) => ({ ...prev, [key]: uri }));
@@ -403,7 +406,7 @@ export default function EditorScreen() {
         return () => {
             cancelled = true;
         };
-    }, [timeline, clipMap]);
+    }, [timeline, clipMap, localUris]);
 
     // 再生/停止の切り替え
     const togglePlay = () => {
