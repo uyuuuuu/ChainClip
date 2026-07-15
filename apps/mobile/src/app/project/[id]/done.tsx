@@ -237,7 +237,7 @@ export default function DoneScreen() {
 
                 <View className="flex-1" />
 
-                <View className="mx-6 my-4 flex-row justify-center gap-6">
+                <View className="mx-6 mt-4 mb-8 flex-row justify-center gap-6">
                     <Button className="h-auto py-3 px-6 gap-2 flex-row justify-center items-center"
                         onPress={handleSave}
                         style={{ opacity: isSaving ? 0.4 : 1 }}>
