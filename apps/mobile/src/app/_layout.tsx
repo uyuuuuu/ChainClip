@@ -38,7 +38,9 @@ export default function RootLayout() {
           value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
         >
           <QueryClientProvider client={queryClient}>
-            <Stack screenOptions={{ headerShown: false }} />
+            <Stack
+              screenOptions={{ headerShown: false, gestureEnabled: false }}
+            />
             <PortalHost />
           </QueryClientProvider>
         </ThemeProvider>
