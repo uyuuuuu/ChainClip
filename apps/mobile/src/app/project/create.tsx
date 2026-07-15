@@ -242,7 +242,8 @@ export default function CreateScreen() {
                 label="準備中…"
                 style={{ width: "80%"}}
                 textStyle={{ fontSize: 24 }}
-                disabled='false'
+                onPress={() => {}}
+                disabled
               />
               <Progress
                 className="mt-2 w-5/6 h-1"
