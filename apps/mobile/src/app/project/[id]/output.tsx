@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
 import { Textarea } from "@/components/ui/textarea";
+import { CustomModal } from '@/components/ui/customModal';
 import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { buildClipMap, type ClipMap } from '@/lib/clipMap';
 import { useEditStore, type Cut } from '@/stores/editStore';
@@ -99,6 +100,8 @@ export default function ConfigScreen() {
     const [barWidth, setBarWidth] = useState(0);
     // いまプレビュー再生の対象になっているカット
     const [playingCutId, setPlayingCutId] = useState<string | null>(firstCut?.cutId ?? null);
+    // モーダルが表示されているかどうか
+    const [isConfirmModal, setIsConfirmModal] = useState(false);
 
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
@@ -533,7 +536,7 @@ export default function ConfigScreen() {
                     label={startRender.isPending ? '出力中…' : '完成動画を出力する'}
                     style={{ width: "80%" }}
                     textStyle={{ fontSize: 24 }}
-                    onPress={handleRender}
+                    onPress={() => setIsConfirmModal(true)}
                     disabled={startRender.isPending}
                 />
                 {startRender.isError && (
@@ -542,6 +545,11 @@ export default function ConfigScreen() {
                 </Text>
                 )}
             </View>
+                <CustomModal                                isOpen={isConfirmModal}
+                    isOpenChange={setIsConfirmModal}
+                    title="動画を作成してもよろしいですか"
+                    description="OKを押すと編集に戻れません"
+                    onConfirm={handleRender}/>
         </SafeAreaView>
     );
 }
