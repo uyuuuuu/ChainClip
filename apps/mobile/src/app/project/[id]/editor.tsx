@@ -758,6 +758,8 @@ export default function EditorScreen() {
                                     playerB.muted = v;
                                 }}
                                 trackColor={{ true: '#22d3ee' }}
+                                // Switchはサイズ指定ができないので縮小して合わせる
+                                style={{ transform: [{ scale: 0.8 }] }}
                             />
                         </View>
                         <View className="h-9 flex-row items-center justify-between">
@@ -767,6 +769,7 @@ export default function EditorScreen() {
                                 value={transition === 'fade'}
                                 onValueChange={(v) => setTransition(v ? 'fade' : 'none')}
                                 trackColor={{ true: '#22d3ee' }}
+                                style={{ transform: [{ scale: 0.8 }] }}
                             />
                         </View>
                     </View>
