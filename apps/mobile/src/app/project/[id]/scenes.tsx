@@ -3,12 +3,13 @@ import { GradientButton } from '@/components/ui/gradientButton';
 import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
 import { useProjectStatus } from '@/hooks/useProjectStatus';
+import { useLocalClips } from '@/lib/localClips';
 import { useEditStore } from '@/stores/editStore';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -31,7 +32,10 @@ export default function ScenesScreen() {
     // GET /projects/{id} を polling。preparing→ready で clips(scenes+署名付きURL) が揃う。
     const { data: project, isError, refetch } = useProjectStatus(id);
     const clips = project?.clips ?? [];
-    
+
+    // 変換後mp4を端末のキャッシュへダウンロードする。完了した分だけ clipId → file:// が入る。
+    const { localUris } = useLocalClips(project?.clips);
+
     // ビデオプレーヤーの幅
     const { width: windowWidth } = useWindowDimensions();
     const playerWidth = windowWidth - 48; // 左右 mx-6 = 24px × 2
@@ -77,8 +81,8 @@ export default function ScenesScreen() {
     const [duration, setDuration] = useState(0);
     // 動画差し替え後、読み込み完了を待ってからシークするための「予約」
     const pendingSeekMs = useRef<number | null>(null);
-    // いまプレーヤーに読み込まれているclip（未ロードは null）
-    const loadedClipId = useRef<string | null>(null);
+    // いまプレーヤーに読み込まれている動画のURI（未ロードは null）
+    const loadedVideoUri = useRef<string | null>(null);
     // プレビュー中のシーン範囲
     type PreviewRange = { sceneId: string; startMs: number; endMs: number };
     const [preview, setPreview] = useState<PreviewRange | null>(null);
@@ -210,25 +214,27 @@ export default function ScenesScreen() {
         setPreviewRange({ sceneId: scene.sceneId, startMs: scene.startMs, endMs: scene.endMs });
         setProgress(0); // バーを即座に0に見せる(シーク完了を待たない)
 
-        if (loadedClipId.current !== scene.clipId) {
-            // 別のclipのシーン → 動画を差し替える。
+        // ローカルにダウンロード済みならfile://を使い、まだなら署名付きURLで代用する
+        const uri = localUris[scene.clipId] ?? scene.videoUrl;
+        if (loadedVideoUri.current !== uri) {
+            // 別の動画 → 動画を差し替える。
             // 差し替え直後はまだシークできないので、位置を「予約」して
             // statusChangeがreadyToPlayになった時にシーク＆再生する
-            loadedClipId.current = scene.clipId;
+            loadedVideoUri.current = uri;
             pendingSeekMs.current = scene.startMs;
             setIsReady(false);
             player.pause();
             try {
-                await player.replaceAsync(scene.videoUrl);  // 署名付きURLを読み込み完了まで待つ
+                await player.replaceAsync(uri);  // 読み込み完了まで待つ
             } catch (e) {
                 // 連打で中断された場合など。最後のタップ分が生きるので何もしなくてよい
                 console.warn('動画の差し替えが中断されました:', e);
             }
         } else if (!isReady) {
-            // 同じclipだがまだ読み込み中 → こちらも予約しておく
+            // 同じ動画だがまだ読み込み中 → こちらも予約しておく
             pendingSeekMs.current = scene.startMs;
         } else {
-            // 同じclipで読み込み済み → すぐシークして再生
+            // 同じ動画で読み込み済み → すぐシークして再生
             player.currentTime = scene.startMs / 1000;
             player.play();
         }
@@ -237,16 +243,22 @@ export default function ScenesScreen() {
     // サムネイル生成
     // sceneId → サムネ画像URI の対応表として持つ
     const [thumbs, setThumbs] = useState<Record<string, string>>({});
+    // 生成済み(生成中)のシーンID
+    const generatedKeys = useRef(new Set<string>());
 
     useEffect(() => {
         let cancelled = false; // 画面を離れた後にsetStateしないためのフラグ
 
         const generate = async () => {
-            // サーバーの署名付きURLをそのまま渡してシーン先頭フレームをサムネ化する
+            // ローカルにダウンロード済みの動画からシーン先頭フレームをサムネ化する
             for (const scene of ALL_SCENES) {
                 if (cancelled) return;
+                const localUri = localUris[scene.clipId];
+                if (!localUri) continue;
+                if (generatedKeys.current.has(scene.sceneId)) continue;
+                generatedKeys.current.add(scene.sceneId);
                 try {
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(scene.videoUrl, {
+                    const { uri } = await VideoThumbnails.getThumbnailAsync(localUri, {
                         time: scene.startMs, // ミリ秒指定。シーンの先頭フレームをサムネにする
                     });
                     if (!cancelled) {
@@ -254,6 +266,7 @@ export default function ScenesScreen() {
                         setThumbs((prev) => ({ ...prev, [scene.sceneId]: uri }));
                     }
                 } catch (e) {
+                    generatedKeys.current.delete(scene.sceneId); // 失敗したら次回リトライできるように戻す
                     console.warn('サムネイル生成に失敗:', e);
                 }
             }
@@ -263,7 +276,7 @@ export default function ScenesScreen() {
         return () => {
             cancelled = true;
         };
-    }, [ALL_SCENES]);
+    }, [ALL_SCENES, localUris]);
 
     /* Zustand */
     // 選択済みシーン
@@ -308,7 +321,7 @@ export default function ScenesScreen() {
 
     // clips が揃ったら先頭シーンを自動プレビュー（未選択状態から一度だけ）
     useEffect(() => {
-        if (ALL_SCENES.length > 0 && loadedClipId.current === null) {
+        if (ALL_SCENES.length > 0 && loadedVideoUri.current === null) {
             previewScene(ALL_SCENES[0]);
         }
         // previewScene は都度生成される関数なので依存に入れない（ALL_SCENES 変化時のみ判定）
@@ -351,20 +364,17 @@ export default function ScenesScreen() {
                     </View>
                 ) : (
                     <View className="flex-1 items-center justify-center px-8 gap-4">
+                        <ActivityIndicator size="large" color="#029FFF" />
                         <Text className="text-center text-xl font-bold text-[#029FFF]">動画を解析中…</Text>
-                        {project?.clipsTotal != null && (
+                        {project?.clipsTotal != null ? (
                             <Text className="text-xs text-gray-500">
                                 {project.clipsReady ?? 0} / {project.clipsTotal} 本 完了
                             </Text>
+                        ) : (
+                            <Text className="text-xs text-gray-500">
+                                動画を読み込んでいます
+                            </Text>
                         )}
-                        <Progress
-                            className="w-2/3 h-1"
-                            value={
-                                project?.clipsTotal
-                                    ? ((project.clipsReady ?? 0) / project.clipsTotal) * 100
-                                    : 0
-                            }
-                        />
                     </View>
                 )}
             </SafeAreaView>

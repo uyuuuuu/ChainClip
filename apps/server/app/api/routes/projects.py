@@ -77,6 +77,7 @@ class TransformRequest(BaseModel):
     zoom: float
     offset_x: float = Field(alias="offsetX")
     offset_y: float = Field(alias="offsetY")
+    rotation: Literal[0, 90, 180, 270] = 0
 
 
 class TimelineCutRequest(BaseModel):

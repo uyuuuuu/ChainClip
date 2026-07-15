@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import { GradientButton } from "@/components/ui/gradientButton";
 import { Progress } from "@/components/ui/progress";
 import { Text } from "@/components/ui/text";
@@ -7,10 +6,11 @@ import { useRequestUploadUrls } from "@/hooks/useRequestUploadUrls";
 import { useStartPrepare } from "@/hooks/useStartPrepare";
 import { useUploadClips, type ClipUploadTarget } from "@/hooks/useUploadClips";
 import * as ImagePicker from "expo-image-picker";
+import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { useState } from "react";
-import { Image, Pressable, ScrollView, View } from "react-native";
+import { Image, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 // 画面状態（アップロード前、アップロード後、解析中、解析完了(いらないかも)、解析失敗）
 type ClipStatus = "uploading" | "uploaded" | "processing" | "ready" | "failed";
@@ -34,9 +34,19 @@ function guessContentType(fileName: string): string {
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import logo from "../../../assets/images/icon.png";
 
+// グリッドの列数・列間の余白(px)
+const GRID_COLUMNS = 3;
+const GRID_GAP = 12;
+
 export default function CreateScreen() {
   // アップロードした動画
   const [videos, setVideos] = useState<PickedVideo[]>([]);
+  // サムネグリッド1マスの一辺(px)。aspectRatioだと削除直後の再レイアウトでたまに潰れて見えるため、
+  // 実測せず画面幅から計算したpx値を明示的に指定して安定させる
+  const { width: windowWidth } = useWindowDimensions();
+  const gridContentWidth = windowWidth - 24 * 2; // ScrollViewのpx-6(左右24px)ぶんを引く
+  const gridCellSize =
+    (gridContentWidth - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
   // 画面進行状態
   const [status, setStatus] = useState<ClipStatus>("uploading");
   // 解析進捗
@@ -154,69 +164,115 @@ export default function CreateScreen() {
   return (
     <SafeAreaView className="w-full flex-1 bg-white">
       {/* ロゴ */}
-      <View className="px-12 py-8 items-center">
-        <Image source={logo} className="w-32 h-32" resizeMode="contain" />
+      <View className="px-12 pt-4 pb-2 items-center">
+        <Image source={logo} className="w-44 h-44" resizeMode="contain" />
       </View>
 
-      <ScrollView contentContainerClassName="px-12 pb-8">
+      <ScrollView
+        contentContainerClassName="px-6 pb-8"
+        showsVerticalScrollIndicator={false}
+      >
         {/* アップロード前 */}
         {status === "uploading" && (
-          <View className="gap-4 my-4 flex flex-col justify-center items-center">
-            <Text className="text-center text-2xl font-bold text-[#029FFF] mb-8">
-              思い出の動画をまとめる
+          <View className="items-center px-6 pt-6">
+            <Text className="text-center text-2xl font-bold text-[#262626]">
+              思い出のハイライトを
+            </Text>
+            <Text className="text-center text-2xl font-bold text-[#262626]">
+              1本に繋げよう
+            </Text>
+            <Text className="text-center text-sm text-gray-400 mt-2 mb-12">
+              動画を選んで、皆と「楽しい」を共有する
             </Text>
             {/* 動画アップロードボタン */}
-            <Button
-              className="h-auto py-4 self-center px-4 gap-1 flex flex-col justify-center items-center"
+            <Pressable
+              className="items-center justify-center gap-4 active:opacity-80"
               onPress={pickVideos}
             >
-              <MaterialCommunityIcons name="upload" size={68} color="white" />
-              <Text className="text-lg">動画をアップロード</Text>
-            </Button>
+              <LinearGradient
+                colors={["#00D5FF", "#00E6E6"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{
+                  width: 128,
+                  height: 128,
+                  borderRadius: 64,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: "#00D5FF",
+                  shadowOpacity: 0.3,
+                  shadowRadius: 16,
+                  shadowOffset: { width: 0, height: 8 },
+                  elevation: 6,
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="video-plus"
+                  size={52}
+                  color="white"
+                />
+              </LinearGradient>
+              <Text className="text-base font-semibold text-[#262626]">
+                動画を選ぶ
+              </Text>
+            </Pressable>
           </View>
         )}
 
         {/* アップロード後 */}
         {(status === "uploaded" || status === "processing") &&
           videos.length !== 0 && (
-            <View className="w-full flex-row flex-wrap justify-between pt-4">
-              {videos.map((v) => (
-                <View
-                  key={v.videoUri}
-                  className="relative w-[44%] h-36 mb-8 items-center justify-center"
-                >
-                  {/* 画像 */}
-                  <Image
-                    source={{ uri: v.thumbnailUri }}
-                    style={{ width: "100%", height: "100%" }}
-                    className="rounded-lg"
-                    resizeMode="cover" // containだとサムネ全体が表示される
-                  />
-                  {/* 削除ボタン */}
-                  <Pressable
-                    className="absolute -top-4 -right-4 flex justify-center items-center"
-                    onPress={() => removeVideo(v.videoUri)}
-                    hitSlop={10}
-                  >
-                    <View className="absolute top-[6px] left-[6px] w-[24px] h-[24px] bg-white rounded-full" />
-                    <MaterialCommunityIcons
-                      name="close-circle"
-                      size={36}
-                      color="black"
-                    />
-                  </Pressable>
-                </View>
-              ))}
-              <Pressable
-                className="w-[44%] h-36 mb-8 items-center justify-center rounded-md border-2 bg-gray-100 border-dotted border-gray-600"
-                onPress={pickVideos}
+            <View>
+              <View className="flex-row items-center justify-between mb-3">
+                <Text className="text-lg font-semibold text-[#262626]">
+                  選択した動画
+                </Text>
+                <Text className="text-sm text-gray-400">{videos.length}本</Text>
+              </View>
+              <View
+                className="w-full flex-row flex-wrap"
+                style={{ columnGap: GRID_GAP, rowGap: GRID_GAP }}
               >
-                <MaterialCommunityIcons
-                  name="plus-circle"
-                  size={56}
-                  color="#4b5563"
-                />
-              </Pressable>
+                {videos.map((v) => (
+                  <View
+                    key={v.videoUri}
+                    className="relative items-center justify-center"
+                    style={{ width: gridCellSize, height: gridCellSize }}
+                  >
+                    {/* 画像 */}
+                    <Image
+                      source={{ uri: v.thumbnailUri }}
+                      style={{ width: "100%", height: "100%" }}
+                      className="rounded-2xl"
+                      resizeMode="cover" // containだとサムネ全体が表示される
+                    />
+                    {/* 削除ボタン */}
+                    <Pressable
+                      className="absolute -top-2 -right-2 flex justify-center items-center"
+                      onPress={() => removeVideo(v.videoUri)}
+                      hitSlop={10}
+                    >
+                      <View className="absolute top-[5px] left-[5px] w-[20px] h-[20px] bg-white rounded-full" />
+                      <MaterialCommunityIcons
+                        name="close-circle"
+                        size={28}
+                        color="#262626"
+                      />
+                    </Pressable>
+                  </View>
+                ))}
+                <Pressable
+                  className="items-center justify-center rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50"
+                  style={{ width: gridCellSize, height: gridCellSize }}
+                  onPress={pickVideos}
+                >
+                  <MaterialCommunityIcons
+                    name="plus"
+                    size={32}
+                    color="#9ca3af"
+                  />
+                </Pressable>
+              </View>
             </View>
           )}
       </ScrollView>
@@ -228,9 +284,18 @@ export default function CreateScreen() {
 
       {/* アップロード後 */}
       {(status === "uploaded" || status === "processing") && (
-        <View className="w-full h-32 flex items-center justify-center bg-white">
+        <View
+          className="w-full px-6 pt-4 pb-6 items-center bg-white"
+          style={{
+            shadowColor: "#000",
+            shadowOpacity: 0.08,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: -2 },
+            elevation: 8,
+          }}
+        >
           {status === "uploaded" && (
-            <View className="w-full flex flex-col justify-center items-center">
+            <View className="w-full items-center">
               {errorMessage && (
                 <Text className="text-xs mb-2 text-red-500" numberOfLines={2}>
                   失敗: {errorMessage}
@@ -238,25 +303,25 @@ export default function CreateScreen() {
               )}
               <GradientButton
                 label="シーンを生成する"
-                style={{ width: "80%" }}
-                textStyle={{ fontSize: 24 }}
+                style={{ width: "100%" }}
+                textStyle={{ fontSize: 20 }}
                 onPress={startPipeline}
               />
             </View>
           )}
           {status === "processing" && (
-            <View className="w-full flex flex-col justify-center items-center">
-              <Text className="text-xs mb-2 text-gray-500">
+            <View className="w-full items-center">
+              <Text className="text-xs mb-2 text-gray-400">
                 アップロードと解析の準備をしています…
               </Text>
               <GradientButton
                 label="準備中…"
-                style={{ width: "80%" }}
-                textStyle={{ fontSize: 24 }}
+                style={{ width: "100%" }}
+                textStyle={{ fontSize: 20 }}
                 onPress={() => {}}
                 disabled
               />
-              <Progress className="mt-2 w-5/6 h-1" value={progress * 100} />
+              <Progress className="mt-3 w-full h-1" value={progress * 100} />
             </View>
           )}
         </View>

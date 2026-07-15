@@ -978,6 +978,17 @@
           "offsetY": {
             "type": "number",
             "title": "Offsety"
+          },
+          "rotation": {
+            "type": "integer",
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ],
+            "title": "Rotation",
+            "default": 0
           }
         },
         "type": "object",

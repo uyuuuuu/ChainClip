@@ -14,6 +14,7 @@ import { useEffect } from "react";
 import { AppState, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { requireOptionalNativeModule } from 'expo';
 import "../global.css";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,8 @@ function useAppStateFocus() {
 }
 
 export default function RootLayout() {
+  const DevMenuPreferences = requireOptionalNativeModule('DevMenuPreferences');
+  DevMenuPreferences?.setPreferencesAsync({ showFloatingActionButton: false });
   const colorScheme = useColorScheme();
   useAppStateFocus();
   return (
@@ -38,7 +41,9 @@ export default function RootLayout() {
           value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
         >
           <QueryClientProvider client={queryClient}>
-            <Stack screenOptions={{ headerShown: false }} />
+            <Stack
+              screenOptions={{ headerShown: false, gestureEnabled: false }}
+            />
             <PortalHost />
           </QueryClientProvider>
         </ThemeProvider>

@@ -4,17 +4,18 @@ import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
 import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { buildClipMap, type ClipMap } from '@/lib/clipMap';
+import { useLocalClips } from '@/lib/localClips';
 import { useEditStore, type Cut } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, GestureResponderEvent, Image, Pressable, Switch, View } from 'react-native';
 import DraggableFlatList, { useOnCellActiveAnimation, type RenderItemParams } from 'react-native-draggable-flatlist';
 import Reanimated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 
 // 2つのプレーヤーの識別子
 // 表: いま画面に見えている方 / 裏: 次のカットを先読みしておく方
@@ -36,25 +37,32 @@ const videoLayoutFor = (cut: Cut | null, containerSize: number, clipMap: ClipMap
     const clip = cut ? clipMap[cut.clipId] : undefined;
     if (!cut || !clip || !containerSize) {
         // 計算できないうちはコンテナいっぱいに表示しておく
-        return { width: '100%' as const, height: '100%' as const, left: 0, top: 0 };
+        return { width: '100%' as const, height: '100%' as const, left: 0, top: 0, rotation: 0 as const };
     }
     const { width: W, height: H } = clip;
-    const { zoom, offsetX, offsetY } = cut.transform;
+    const { zoom, offsetX, offsetY, rotation } = cut.transform;
 
-    // 切り抜く正方形の一辺(動画ピクセル)
-    const cropSide = Math.min(W, H) / zoom;
-    // 動画ピクセル → 画面px の倍率。「切り抜き正方形 = コンテナの一辺」になるように
+    // 90/270度回転時は、切り抜き計算上の縦横が入れ替わる(cutAdjustSheetの計算と揃える)
+    const swapped = rotation === 90 || rotation === 270;
+    const eW = swapped ? H : W;
+    const eH = swapped ? W : H;
+
+    // 切り抜く正方形の一辺(実効ピクセル)
+    const cropSide = Math.min(eW, eH) / zoom;
+    // 実効ピクセル → 画面px の倍率。「切り抜き正方形 = コンテナの一辺」になるように
     const scale = containerSize / cropSide;
 
-    // 切り抜き正方形の左上(動画ピクセル)
-    const cropLeft = (0.5 + offsetX) * W - cropSide / 2;
-    const cropTop = (0.5 + offsetY) * H - cropSide / 2;
+    // 切り抜き正方形の左上(実効ピクセル)
+    const cropLeft = (0.5 + offsetX) * eW - cropSide / 2;
+    const cropTop = (0.5 + offsetY) * eH - cropSide / 2;
 
     return {
-        width: W * scale,   // 動画全体の描画サイズ
+        // VideoView自体は回転前の実サイズのまま描画し、見た目だけCSSのrotateで回す
+        width: W * scale,
         height: H * scale,
         left: -cropLeft * scale, // 切り抜き位置がコンテナの左上に来るよう、動画をマイナス方向へずらす
         top: -cropTop * scale,
+        rotation,
     };
 };
 
@@ -91,8 +99,8 @@ const CutScaleDecorator = ({ children }: { children: ReactNode }) => {
 export default function EditorScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
 
-    // サーバーの clips（署名付きURL・解像度・シーン）を clipId 引きの対応表にする。
-    // ready 済みなら scenes.tsx を通ってきているのでキャッシュから即取れる。
+    const { localUris } = useLocalClips(project?.clips);
+
     const { data: project } = useProjectStatus(id);
     const clipMap = useMemo<ClipMap>(() => buildClipMap(project?.clips), [project?.clips]);
 
@@ -173,8 +181,6 @@ export default function EditorScreen() {
     const advancing = useRef(false);
     // シーク直後に届く「古い再生位置」のイベントを無視する期限
     const ignoreTimeUpdateUntil = useRef(0);
-    // 生成済み(生成中)のサムネイルキー
-    const generatedKeys = useRef(new Set<string>());
 
     // カットを指定したプレーヤーに読み込む
     const loadCutInto = (key: PlayerKey, cut: Cut, seekMs = cut.startMs) =>
@@ -199,7 +205,8 @@ export default function EditorScreen() {
             pendingSeek.current[key] = { seekMs, resolve };
             if (loadedClip.current[key] !== cut.clipId) {
                 loadedClip.current[key] = cut.clipId;
-                player.replaceAsync(clip.videoUrl).catch((e) => {
+                const uri = localUris[cut.clipId] ?? clip.videoUrl;
+                player.replaceAsync(uri).catch((e) => {
                     console.warn('動画の差し替えが中断されました:', e);
                 });
             }
@@ -372,6 +379,8 @@ export default function EditorScreen() {
     }, [clipMap]);
 
     // サムネイル生成
+    const generatedKeys = useRef(new Set<string>());
+        
     useEffect(() => {
         let cancelled = false; // 画面を離れた後にsetStateしないためのフラグ
 
@@ -382,12 +391,13 @@ export default function EditorScreen() {
 
                 const clip = clipMap[cut.clipId];
                 if (!clip) continue; // clipMap未取得。次回(clipMap更新)にリトライさせるため記録しない
+                const localUri = localUris[cut.clipId];
+                if (!localUri) continue;
                 generatedKeys.current.add(key);
                 try {
-                    // サーバーの署名付きURLをそのまま渡してカット先頭フレームをサムネ化する
                     if (cancelled) return;
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(clip.videoUrl, {
-                        time: cut.startMs, // カットの先頭フレームをサムネに
+                    const { uri } = await VideoThumbnails.getThumbnailAsync(localUri, {
+                        time: scene.startMs,
                     });
                     if (!cancelled) {
                         setThumbs((prev) => ({ ...prev, [key]: uri }));
@@ -403,7 +413,7 @@ export default function EditorScreen() {
         return () => {
             cancelled = true;
         };
-    }, [timeline, clipMap]);
+    }, [timeline, clipMap, localUris]);
 
     // 再生/停止の切り替え
     const togglePlay = () => {
@@ -627,8 +637,21 @@ export default function EditorScreen() {
         );
     }
 
+    // 設定ポップアップを閉じる（サブメニューも一緒に）
+    const closeSettings = () => {
+        setShowSettings(false);
+        setShowCutSecMenu(false);
+    };
+
     return (
         <SafeAreaView className="w-full flex-1 bg-white">
+            {/* ポップアップの外側をタップしたら閉じるための透明な層 */}
+            {showSettings && (
+                <Pressable
+                    className="absolute inset-0 z-[5]"
+                    onPress={closeSettings}
+                />
+            )}
             {/* ヘッダー */}
             <View className="h-16 flex-row items-center justify-center">
                 <Pressable onPress={() => router.back()} className="absolute left-2 p-2">
@@ -685,6 +708,7 @@ export default function EditorScreen() {
                                         height: layout.height,
                                         left: layout.left,
                                         top: layout.top,
+                                        transform: [{ rotate: `${layout.rotation}deg` }],
                                     }}
                                     contentFit="fill"
                                     nativeControls={false}
@@ -694,7 +718,8 @@ export default function EditorScreen() {
                     })}
                 </View>
             </View>
-            <View className="h-8 my-2 flex-row items-center justify-center gap-2">
+            {/* 歯車を閉じる用の透明な層より前面に出すため z-10 */}
+            <View className="h-8 my-2 z-10 flex-row items-center justify-center gap-2">
                 {/* 再生ボタン */}
                 <Pressable onPress={togglePlay} hitSlop={8}>
                     <MaterialCommunityIcons
@@ -733,7 +758,7 @@ export default function EditorScreen() {
                 {/* 設定ポップアップ */}
                 {showSettings && (
                     <View
-                        className="absolute bottom-10 right-4 z-10 w-60 rounded-xl bg-white p-3 shadow-md shadow-gray-300"
+                        className="absolute bottom-10 right-4 z-10 w-60 rounded-xl bg-white p-3 shadow-md shadow-black/20"
                         style={{ elevation: 8 }}
                     >
                         {/* カット秒数 */}
@@ -758,6 +783,8 @@ export default function EditorScreen() {
                                     playerB.muted = v;
                                 }}
                                 trackColor={{ true: '#22d3ee' }}
+                                // Switchはサイズ指定ができないので縮小して合わせる
+                                style={{ transform: [{ scale: 0.8 }] }}
                             />
                         </View>
                         <View className="h-9 flex-row items-center justify-between">
@@ -767,6 +794,7 @@ export default function EditorScreen() {
                                 value={transition === 'fade'}
                                 onValueChange={(v) => setTransition(v ? 'fade' : 'none')}
                                 trackColor={{ true: '#22d3ee' }}
+                                style={{ transform: [{ scale: 0.8 }] }}
                             />
                         </View>
                     </View>
@@ -775,7 +803,7 @@ export default function EditorScreen() {
                 {/* カット秒数の選択肢ポップアップ */}
                 {showSettings && showCutSecMenu && (
                     <View
-                        className="absolute bottom-36 right-14 z-20 w-28 rounded-xl bg-white p-2 shadow-md shadow-gray-300"
+                        className="absolute bottom-36 right-14 z-20 w-28 rounded-xl bg-white p-2 shadow-md shadow-black/20"
                         style={{ elevation: 9 }}
                     >
                         {[3, 5, 10].map((sec) => (
@@ -803,9 +831,12 @@ export default function EditorScreen() {
 
             <View className="pb-2">
                 {/* 並び替えヒント */}
-                <Text className="mt-2 px-6 text-right text-[11px] text-gray-400">
-                    ハンドルを掴んで並び替えられます
-                </Text>
+                <View className="mt-2 px-6 flex-row items-center justify-end gap-1">
+                    <MaterialCommunityIcons name="lightbulb-on-outline" size={13} color="#9ca3af" />
+                    <Text className="text-[11px] text-gray-400">
+                        ハンドルを掴んで並び替えられます
+                    </Text>
+                </View>
 
                 {/* タイムライン */}
                 <DraggableFlatList

@@ -381,6 +381,12 @@ export interface components {
             offsetX: number;
             /** Offsety */
             offsetY: number;
+            /**
+             * Rotation
+             * @default 0
+             * @enum {integer}
+             */
+            rotation: 0 | 90 | 180 | 270;
         };
         /** ValidationError */
         ValidationError: {
