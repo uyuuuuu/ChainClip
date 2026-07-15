@@ -580,7 +580,7 @@ export default function ConfigScreen() {
                 <GradientButton
                     label={startRender.isPending ? '出力中…' : '完成動画を出力する'}
                     style={{ width: '80%' }}
-                    textStyle={{ fontSize: 24 }}
+                    textStyle={{ fontSize: 20 }}
                     onPress={openConfirmModal}
                     disabled={startRender.isPending}
                 />
