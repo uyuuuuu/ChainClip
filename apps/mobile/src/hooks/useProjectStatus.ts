@@ -23,7 +23,10 @@ export function useProjectStatus(
       if (!projectId) throw new Error("projectId is required");
       return getProject(projectId);
     },
+    // ポーリング前提なのでリトライしない。失敗しても次のポーリングが再試行になる。
+    retry: false,
     // サーバーのプロジェクトstatusが終端に到達したらポーリング停止（false）、それ以外は intervalMs で継続
+    // エラー時は status が undefined のため継続し、一時的な障害からは自動回復する
     refetchInterval: (query) =>
       isTerminal(query.state.data?.status) ? false : intervalMs,
   });
