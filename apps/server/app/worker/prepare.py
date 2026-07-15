@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
+import sys
 import tempfile
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -20,6 +23,8 @@ from app.infra.video import intelligence
 from app.domain.detection import LabelTrack
 
 GCS_BUCKET_NAME = "GCS_BUCKET_NAME"
+
+logger = logging.getLogger(__name__)
 
 
 def run(project_id: uuid.UUID) -> None:
@@ -71,7 +76,20 @@ def run(project_id: uuid.UUID) -> None:
         session.close()
 
 
+def _timed(label: str, fn, *args, **kwargs):
+    """fnを実行し、所要時間をログに出す。並列実行される処理の内訳を測るために使う。"""
+    started = time.monotonic()
+    logger.info("%s: start", label)
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        logger.info("%s: done in %.1fs", label, time.monotonic() - started)
+
+
 def _prepare_clip(clip_repo: ClipRepo, asset_repo: AssetRepo, clip: Clip) -> None:
+    logger.info("clip %s: start (index=%s)", clip.id, clip.clip_index)
+    clip_started = time.monotonic()
+
     clip.mark_processing()
     clip_repo.update(clip)
 
@@ -82,7 +100,8 @@ def _prepare_clip(clip_repo: ClipRepo, asset_repo: AssetRepo, clip: Clip) -> Non
             original_path = Path(tmp_dir) / "original"
             converted_path = Path(tmp_dir) / "converted.mp4"
 
-            gcs.download_file(clip.original_object_key(), original_path)
+            _timed("download", gcs.download_file, clip.original_object_key(), original_path)
+            logger.info("download: %.1fMB", original_path.stat().st_size / 1e6)
 
             # ffmpeg変換(CPU処理)とVideo Intelligence解析(API呼び出し・待ちが主)は
             # どちらも元ファイルだけを入力にしており依存関係がないため、
@@ -90,15 +109,28 @@ def _prepare_clip(clip_repo: ClipRepo, asset_repo: AssetRepo, clip: Clip) -> Non
             # 解析は元ファイルのGCS URIをそのまま渡す(変換後mp4を待たない)。
             original_uri = f"gs://{bucket_name}/{clip.original_object_key()}"
             with ThreadPoolExecutor(max_workers=2) as executor:
-                convert_future = executor.submit(ffmpeg.convert_to_mp4, original_path, converted_path)
-                labels_future = executor.submit(intelligence.fetch_labels, gcs_uri=original_uri)
+                convert_future = executor.submit(
+                    _timed, "convert", ffmpeg.convert_to_mp4, original_path, converted_path
+                )
+                labels_future = executor.submit(
+                    _timed, "analyze", intelligence.fetch_labels, gcs_uri=original_uri
+                )
 
                 convert_future.result()
                 tracks: list[LabelTrack] = labels_future.result()
 
             probe = ffmpeg.probe(converted_path)
+            logger.info(
+                "converted: %.1fMB, %dx%d, %.1fs",
+                converted_path.stat().st_size / 1e6,
+                probe.width,
+                probe.height,
+                probe.duration_ms / 1000,
+            )
 
-            converted_key = gcs.upload_file(
+            converted_key = _timed(
+                "upload",
+                gcs.upload_file,
                 clip.converted_object_key(),
                 converted_path,
                 content_type="video/mp4",
@@ -151,15 +183,25 @@ def _prepare_clip(clip_repo: ClipRepo, asset_repo: AssetRepo, clip: Clip) -> Non
 
         clip.mark_ready(duration_ms=probe.duration_ms, width=probe.width, height=probe.height)
         clip_repo.update(clip)
+        logger.info("clip %s: ready in %.1fs", clip.id, time.monotonic() - clip_started)
     except ffmpeg.FfmpegConversionError as exc:
+        logger.exception("clip %s: ffmpeg failed after %.1fs", clip.id, time.monotonic() - clip_started)
         clip.mark_failed(error_code="FFMPEG_FAILED", error_message=str(exc))
         clip_repo.update(clip)
         raise
     except DomainError as exc:
+        logger.exception("clip %s: failed after %.1fs", clip.id, time.monotonic() - clip_started)
         clip.mark_failed(error_code=type(exc).__name__, error_message=str(exc))
         clip_repo.update(clip)
         raise
 
 
 if __name__ == "__main__":
+    # Cloud Run Jobsはstdout/stderrをそのままCloud Loggingに送るため、
+    # ハンドラはstdoutへの出力だけあればよい。
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        stream=sys.stdout,
+    )
     run(uuid.UUID(os.environ["PROJECT_ID"]))
