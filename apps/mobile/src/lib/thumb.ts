@@ -1,16 +1,14 @@
-// expo-video-thumbnails の getThumbnailAsync をリトライ付きで実行する
-
 import * as VideoThumbnails from 'expo-video-thumbnails';
-
+ 
 type Options = {
-  attempts?: number; // リトライ回数
-  quality?: number;  // 0.0〜1.0
+  attempts?: number; // リトライ回数(初回含む)
+  quality?: number;  // 0.0〜1.0。低いほど生成が軽く速い
 };
-
+ 
 export async function getThumbWithRetry(
   uri: string,
   timeMs: number,
-  { attempts = 3, quality = 0.7 }: Options = {},
+  { attempts = 3, quality = 0.5 }: Options = {},
 ): Promise<string> {
   let lastError: unknown;
   for (let i = 0; i < attempts; i++) {

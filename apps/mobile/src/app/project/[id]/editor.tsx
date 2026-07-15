@@ -22,9 +22,6 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 // 先読みをさせることで、別動画の読み込み時間を削減してラグを防ぐ
 type PlayerKey = 'A' | 'B';
 
-// サムネイルのキー(clipId:startMs)
-const thumbKey = (cut: { clipId: string; startMs: number }) => `${cut.clipId}:${cut.startMs}`;
-
 // カットがどのシーン由来かを clipId と開始位置から逆引きして、ラベルを取り出す
 // （storeのCutはラベルを持っていないため）
 const findLabels = (cut: Cut, clipMap: ClipMap): string[] => {
@@ -158,8 +155,9 @@ export default function EditorScreen() {
     const [selectedCutId, setSelectedCutId] = useState<string | null>(firstCut?.cutId ?? null);
     // カット編集シートの表示
     const [showCropSheet, setShowCropSheet] = useState(false);
-    /* サムネイル（キーは clipId:startMs） */
-    const [thumbs, setThumbs] = useState<Record<string, string>>({});
+    // サムネイル
+    const thumbs = useEditStore((s) => s.cutThumbnails);
+    const setCutThumbnail = useEditStore((s) => s.setCutThumbnail);
 
     // イベントリスナーから最新値を読む用のref
     const timelineRef = useRef(timeline);
@@ -386,21 +384,21 @@ export default function EditorScreen() {
 
         const generate = async () => {
             for (const cut of timeline) {
-                const key = thumbKey(cut);
-                if (generatedKeys.current.has(key)) continue;
+                if (thumbs[cut.cutId]) continue;
+                if (generatedKeys.current.has(cut.cutId)) continue;
 
                 const clip = clipMap[cut.clipId];
                 if (!clip) continue; // clipMap未取得。次回(clipMap更新)にリトライさせるため記録しない
                 const localUri = localUris[cut.clipId];
                 if (!localUri) continue;
-                generatedKeys.current.add(key);
+                generatedKeys.current.add(cut.cutId);
                 try {
                     if (cancelled) return;
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(localUri, {
+                    const result = await VideoThumbnails.getThumbnailAsync(localUri, {
                         time: scene.startMs,
                     });
                     if (!cancelled) {
-                        setThumbs((prev) => ({ ...prev, [key]: uri }));
+                        setCutThumbnail(cut.cutId, result.uri);
                     }
                 } catch (e) {
                     generatedKeys.current.delete(key); // 失敗したら次回リトライできるように戻す
@@ -413,7 +411,7 @@ export default function EditorScreen() {
         return () => {
             cancelled = true;
         };
-    }, [timeline, clipMap, localUris]);
+    }, [timeline, clipMap, localUris, thumbs, setCutThumbnail]);
 
     // 再生/停止の切り替え
     const togglePlay = () => {
@@ -554,7 +552,7 @@ export default function EditorScreen() {
         const index = getIndex() ?? 0;
         const isSelected = cut.cutId === selectedCutId;
         const isPreviewing = cut.cutId === playingCutId && isPlaying;
-        const thumb = thumbs[thumbKey(cut)];
+        const thumb = thumbs[cut.cutId];
         return (
             // ドラッグ中に少し拡大
             <CutScaleDecorator>
@@ -862,9 +860,9 @@ export default function EditorScreen() {
                         <View className="flex-row items-center gap-3">
                             {/* サムネイル */}
                             <View className="relative">
-                                {thumbs[thumbKey(selectedCut)] ? (
+                                {thumbs[selectedCut.cutId] ? (
                                     <Image
-                                        source={{ uri: thumbs[thumbKey(selectedCut)] }}
+                                        source={{ uri: thumbs[selectedCut.cutId] }}
                                         style={{ width: 84, height: 84 }}
                                         className="rounded-md"
                                         resizeMode="cover"

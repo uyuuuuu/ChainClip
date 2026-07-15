@@ -34,7 +34,7 @@ export default function ScenesScreen() {
     const clips = project?.clips ?? [];
 
     // 変換後mp4を端末のキャッシュへダウンロードする。完了した分だけ clipId → file:// が入る。
-    const { localUris } = useLocalClips(project?.clips);
+    const { localUris, done: dlDone  } = useLocalClips(project?.clips);
 
     // ビデオプレーヤーの幅
     const { width: windowWidth } = useWindowDimensions();
@@ -239,10 +239,18 @@ export default function ScenesScreen() {
             player.play();
         }
     };
+    
+    /* Zustand */
+    // 選択済みシーン
+    const selectedScenes = useEditStore((s) => s.selectedScenes);
+    // 選択されているかどうか
+    const toggleScene = useEditStore((s) => s.toggleScene);
+    // タイムライン生成
+    const buildTimeline = useEditStore((s) => s.buildTimeline);
+    const sceneThumbnails = useEditStore((s) => s.sceneThumbnails);
+    const setSceneThumbnail = useEditStore(s => s.setSceneThumbnail);
 
     // サムネイル生成
-    // sceneId → サムネ画像URI の対応表として持つ
-    const [thumbs, setThumbs] = useState<Record<string, string>>({});
     // 生成済み(生成中)のシーンID
     const generatedKeys = useRef(new Set<string>());
 
@@ -253,17 +261,18 @@ export default function ScenesScreen() {
             // ローカルにダウンロード済みの動画からシーン先頭フレームをサムネ化する
             for (const scene of ALL_SCENES) {
                 if (cancelled) return;
+                if (sceneThumbnails[scene.sceneId]) continue;
                 const localUri = localUris[scene.clipId];
                 if (!localUri) continue;
                 if (generatedKeys.current.has(scene.sceneId)) continue;
                 generatedKeys.current.add(scene.sceneId);
                 try {
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(localUri, {
+                    const thumb = await VideoThumbnails.getThumbnailAsync(localUri, {
                         time: scene.startMs, // ミリ秒指定。シーンの先頭フレームをサムネにする
                     });
                     if (!cancelled) {
                         // 1枚できるたびに反映（全部待たずに順次表示される）
-                        setThumbs((prev) => ({ ...prev, [scene.sceneId]: uri }));
+                        setSceneThumbnail(scene.sceneId, thumb.uri);
                     }
                 } catch (e) {
                     generatedKeys.current.delete(scene.sceneId); // 失敗したら次回リトライできるように戻す
@@ -276,16 +285,7 @@ export default function ScenesScreen() {
         return () => {
             cancelled = true;
         };
-    }, [ALL_SCENES, localUris]);
-
-    /* Zustand */
-    // 選択済みシーン
-    const selectedScenes = useEditStore((s) => s.selectedScenes);
-    // 選択されているかどうか
-    const toggleScene = useEditStore((s) => s.toggleScene);
-    // タイムライン生成
-    const buildTimeline = useEditStore((s) => s.buildTimeline);
-
+    }, [ALL_SCENES, localUris, sceneThumbnails, setSceneThumbnail]);
 
     // 選択済みシーンのSet
     const selectedIdSet = new Set(selectedScenes.map((s) => s.sceneId));
@@ -330,7 +330,7 @@ export default function ScenesScreen() {
 
     // preparing中・取得前はローディング、failedはエラー表示
     const projectStatus = project?.status;
-    if (projectStatus !== 'ready') {
+    if (projectStatus !== 'ready' || !dlDone) {
         const isFailed = projectStatus === 'failed';
         return (
             <SafeAreaView className="w-full flex-1 bg-white">
@@ -482,9 +482,9 @@ export default function ScenesScreen() {
                         >
                             <View className="relative">
                                 {/* サムネイル（生成中はグレーのプレースホルダー） */}
-                                {thumbs[item.sceneId] ? (
+                                {sceneThumbnails[item.sceneId] ? (
                                     <Image
-                                        source={{ uri: thumbs[item.sceneId] }}
+                                        source={{ uri: sceneThumbnails[item.sceneId] }}
                                         style={{ width: 96, height: 52 }}
                                         className="h-16 w-24 rounded-sm"
                                         resizeMode="cover"
@@ -544,9 +544,9 @@ export default function ScenesScreen() {
                 >
                     {selectedScenes.map((scene) => (
                         <View key={scene.sceneId} className="relative">
-                            {thumbs[scene.sceneId] ? (
+                            {sceneThumbnails[scene.sceneId] ? (
                                 <Image
-                                    source={{ uri: thumbs[scene.sceneId] }}
+                                    source={{ uri: sceneThumbnails[scene.sceneId] }}
                                     style={{ width: 58, height: 58 }}
                                     className="rounded-sm"
                                     resizeMode="cover"

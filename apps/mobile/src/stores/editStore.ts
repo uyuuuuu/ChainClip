@@ -29,6 +29,8 @@ type EditState = {
   timeline: Cut[];
   transition: 'none' | 'fade';
   cutSec: number;
+  sceneThumbnails: Record<string, string>;
+  cutThumbnails: Record<string, string>;
 
   // --- 状態を変更する関数(アクション) ---
   toggleScene: (scene: SelectedScene) => void;
@@ -39,6 +41,8 @@ type EditState = {
   removeCut: (cutId: string) => void;
   setTransition: (t: 'none' | 'fade') => void;
   setCutSec: (sec: number) => void;
+  setSceneThumbnail: (sceneId: string, uri: string) => void;
+  setCutThumbnail: (cutId: string, uri: string) => void;
   reset: () => void;
 };
 
@@ -50,6 +54,8 @@ export const useEditStore = create<EditState>()((set) => ({
   timeline: [],
   transition: 'none',
   cutSec: DEFAULT_CUT_SEC,
+  sceneThumbnails: {},
+  cutThumbnails: {},
 
   // シーンの選択
   toggleScene: (scene) =>
@@ -63,25 +69,42 @@ export const useEditStore = create<EditState>()((set) => ({
     }),
 
   // 選択シーンから初期タイムラインを作る
-  buildTimeline: () =>
-    set((s) => ({
-      timeline: s.selectedScenes.map((scene) => ({
-        cutId: Crypto.randomUUID(),
-        clipId: scene.clipId,
-        sceneId: scene.sceneId,
-        sceneStartMs: scene.startMs,
-        sceneEndMs: scene.endMs,
-        startMs: scene.startMs,
-        endMs: Math.min(scene.startMs + s.cutSec * 1000, scene.endMs),
-        transform: { ...DEFAULT_TRANSFORM },
-      })),
-    })),
+    buildTimeline: () =>
+      set((s) => {
+        const timeline = s.selectedScenes.map((scene) => ({
+          cutId: Crypto.randomUUID(),
+          clipId: scene.clipId,
+          sceneId: scene.sceneId,
+          sceneStartMs: scene.startMs,
+          sceneEndMs: scene.endMs,
+          startMs: scene.startMs,
+          endMs: Math.min(scene.startMs + s.cutSec * 1000, scene.endMs),
+          transform: { ...DEFAULT_TRANSFORM },
+        }));
+        // シーンのサムネを対応するカットに引き継ぐ(scenes.tsx → editor.tsxで作り直さない)
+        const cutThumbnails: Record<string, string> = {};
+        for (const cut of timeline) {
+          const uri = s.sceneThumbnails[cut.sceneId];
+          if (uri) cutThumbnails[cut.cutId] = uri;
+        }
+        return { timeline, cutThumbnails };
+      }),
 
   // 切り抜き範囲・表示範囲の変更
   updateCut: (cutId, patch) =>
-    set((s) => ({
-      timeline: s.timeline.map((c) => (c.cutId === cutId ? { ...c, ...patch } : c)),
-    })),
+  set((s) => {
+    const target = s.timeline.find((c) => c.cutId === cutId);
+    const startMsChanged =
+        target != null && patch.startMs != null && patch.startMs !== target.startMs;
+        const cutThumbnails = { ...s.cutThumbnails };
+        if (startMsChanged) {
+            delete cutThumbnails[cutId];
+        }
+        return {
+            timeline: s.timeline.map((c) => (c.cutId === cutId ? { ...c, ...patch } : c)),
+            cutThumbnails,
+        };
+    }),
 
   // ドラッグで並び替え
   moveCut: (from, to) =>
@@ -100,11 +123,28 @@ export const useEditStore = create<EditState>()((set) => ({
       const copy = { ...s.timeline[i], cutId: Crypto.randomUUID() };
       const next = [...s.timeline];
       next.splice(i + 1, 0, copy);
-      return { timeline: next };
+      const originalThumb = s.cutThumbnails[cutId];
+      const cutThumbnails = originalThumb
+        ? { ...s.cutThumbnails, [newCutId]: originalThumb }
+        : s.cutThumbnails;
+      return { timeline: next, cutThumbnails };
     }),
 
-  removeCut: (cutId) =>
-    set((s) => ({ timeline: s.timeline.filter((c) => c.cutId !== cutId) })),
+    removeCut: (cutId) =>
+      set((s) => {
+        const cutThumbnails = { ...s.cutThumbnails };
+        delete cutThumbnails[cutId];
+        return {
+            timeline: s.timeline.filter((c) => c.cutId !== cutId),
+            cutThumbnails,
+        };
+    }),
+
+  setSceneThumbnail: (sceneId, uri) =>
+    set((s) => ({ sceneThumbnails: { ...s.sceneThumbnails, [sceneId]: uri } })),
+
+  setCutThumbnail: (cutId, uri) =>
+    set((s) => ({ cutThumbnails: { ...s.cutThumbnails, [cutId]: uri } })),
 
   setTransition: (t) => set({ transition: t }),
 
@@ -120,5 +160,12 @@ export const useEditStore = create<EditState>()((set) => ({
 
   // render送信成功後や新規プロジェクト開始時に必ず呼ぶ
   reset: () =>
-    set({ selectedScenes: [], timeline: [], transition: 'none', cutSec: DEFAULT_CUT_SEC }),
+    set({
+      selectedScenes: [],
+      timeline: [],
+      transition: 'none',
+      cutSec: DEFAULT_CUT_SEC,
+      sceneThumbnails: {},
+      cutThumbnails: {},
+    }),
 }));
