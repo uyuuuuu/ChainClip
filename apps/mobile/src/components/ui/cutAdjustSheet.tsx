@@ -483,9 +483,12 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
                     )}
                 </View>
             </GestureDetector>
-            <Text className="mt-1 text-center text-[10px] text-gray-400">
-                ドラッグで位置、ピンチでサイズを調整できます
-            </Text>
+            <View className="mt-1 flex-row items-center justify-center gap-1">
+                <MaterialCommunityIcons name="lightbulb-on-outline" size={12} color="#9ca3af" />
+                <Text className="text-[10px] text-gray-400">
+                    ドラッグで位置、ピンチでサイズを調整できます
+                </Text>
+            </View>
 
             {/*  カット位置の調整 */}
             <View className="mx-4 mt-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-md shadow-gray-100">

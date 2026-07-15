@@ -803,9 +803,12 @@ export default function EditorScreen() {
 
             <View className="pb-2">
                 {/* 並び替えヒント */}
-                <Text className="mt-2 px-6 text-right text-[11px] text-gray-400">
-                    ハンドルを掴んで並び替えられます
-                </Text>
+                <View className="mt-2 px-6 flex-row items-center justify-end gap-1">
+                    <MaterialCommunityIcons name="lightbulb-on-outline" size={13} color="#9ca3af" />
+                    <Text className="text-[11px] text-gray-400">
+                        ハンドルを掴んで並び替えられます
+                    </Text>
+                </View>
 
                 {/* タイムライン */}
                 <DraggableFlatList
