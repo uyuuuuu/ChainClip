@@ -1,7 +1,9 @@
 import * as Crypto from 'expo-crypto'; // RNにはcrypto.randomUUIDが無いのでこれを使う
 import { create } from 'zustand';
 
-export type Transform = { zoom: number; offsetX: number; offsetY: number };
+// rotation: 時計回りの回転角(度)。90度刻みのみ許可
+export type Rotation = 0 | 90 | 180 | 270;
+export type Transform = { zoom: number; offsetX: number; offsetY: number; rotation: Rotation };
 
 export type Cut = {
   cutId: string;
@@ -40,7 +42,7 @@ type EditState = {
   reset: () => void;
 };
 
-const DEFAULT_TRANSFORM: Transform = { zoom: 1.0, offsetX: 0, offsetY: 0 };
+const DEFAULT_TRANSFORM: Transform = { zoom: 1.0, offsetX: 0, offsetY: 0, rotation: 0 };
 const DEFAULT_CUT_SEC = 3;
 
 export const useEditStore = create<EditState>()((set) => ({
