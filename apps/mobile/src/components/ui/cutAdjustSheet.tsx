@@ -458,8 +458,16 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
                                 height: frame.side,
                             }}
                         >
-                            <View className="absolute inset-0 rounded-sm border border-white/80" />
-                            {/* 四隅のかぎマーク */}
+                            <View
+                                className="absolute inset-0 rounded-sm border border-white/80"
+                                style={{
+                                    shadowColor: '#000',
+                                    shadowOpacity: 0.4,
+                                    shadowRadius: 2,
+                                    shadowOffset: { width: 0, height: 0 },
+                                }}
+                            />
+                            {/* 四隅のかぎマーク。明るい映像でも埋もれないよう、白に影を落として輪郭を出す */}
                             {(
                                 [
                                     { left: 0, top: 0, borderLeftWidth: 3, borderTopWidth: 3 },
@@ -474,7 +482,12 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
                                         position: 'absolute',
                                         width: 18,
                                         height: 18,
-                                        borderColor: '#171717',
+                                        borderColor: '#ffffff',
+                                        shadowColor: '#000',
+                                        shadowOpacity: 0.5,
+                                        shadowRadius: 2,
+                                        shadowOffset: { width: 0, height: 0 },
+                                        elevation: 3,
                                         ...s,
                                     }}
                                 />
