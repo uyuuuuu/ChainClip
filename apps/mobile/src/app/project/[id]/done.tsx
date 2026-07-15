@@ -72,8 +72,12 @@ export default function DoneScreen() {
                 player.addListener('statusChange', ({ status }) => {
                     const ready = status === 'readyToPlay';
                     setIsReady(ready);
-                    // 読み込み完了時に動画の長さを取得（秒 → ms）
-                    if (ready) setDurationMs(player.duration * 1000);
+                    if (ready) {
+                        // 読み込み完了時に動画の長さを取得（秒 → ms）
+                        setDurationMs(player.duration * 1000);
+                        // 開いた直後は真っ黒に見えるため、自動で再生を始める
+                        player.play();
+                    }
                 }),
                 player.addListener('timeUpdate', ({ currentTime }) => {
                     setCurrentMs(currentTime * 1000);
