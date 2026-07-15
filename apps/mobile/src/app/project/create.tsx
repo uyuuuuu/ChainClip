@@ -6,6 +6,7 @@ import { useRequestUploadUrls } from "@/hooks/useRequestUploadUrls";
 import { useStartPrepare } from "@/hooks/useStartPrepare";
 import { useUploadClips, type ClipUploadTarget } from "@/hooks/useUploadClips";
 import * as ImagePicker from "expo-image-picker";
+import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { useState } from "react";
@@ -188,10 +189,17 @@ export default function CreateScreen() {
               className="items-center justify-center gap-4 active:opacity-80"
               onPress={pickVideos}
             >
-              <View
-                className="w-32 h-32 rounded-full bg-[#029FFF] items-center justify-center"
+              <LinearGradient
+                colors={["#00D5FF", "#00E6E6"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
                 style={{
-                  shadowColor: "#029FFF",
+                  width: 128,
+                  height: 128,
+                  borderRadius: 64,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: "#00D5FF",
                   shadowOpacity: 0.3,
                   shadowRadius: 16,
                   shadowOffset: { width: 0, height: 8 },
@@ -203,7 +211,7 @@ export default function CreateScreen() {
                   size={52}
                   color="white"
                 />
-              </View>
+              </LinearGradient>
               <Text className="text-base font-semibold text-[#262626]">
                 動画を選ぶ
               </Text>
