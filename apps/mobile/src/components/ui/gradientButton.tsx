@@ -7,12 +7,14 @@ export function GradientButton({
   style,       // ボタン全体（入れ物）のスタイル
   buttonStyle, // ボタンのスタイル
   textStyle,   // 文字のスタイル
+　disabled = false,
 }: {
   label: string;
   onPress: () => void;
   style?: StyleProp<ViewStyle>; 
   buttonStyle?: StyleProp<ViewStyle>; 
   textStyle?: StyleProp<TextStyle>;
+　disabled?: boolean;
 }) {
   return (
     <Pressable onPress={onPress} style={style}>
@@ -26,7 +28,8 @@ export function GradientButton({
             paddingHorizontal: 24,
             paddingVertical: 12,
             alignItems: "center",
-            justifyContent: "center", 
+            justifyContent: "center",
+        　   opacity: disabled ? 0.4 : 1,
           },
           buttonStyle,
         ]}

@@ -187,6 +187,7 @@ export default function CreateScreen() {
                 <Image
                   source={{ uri: v.thumbnailUri }}
                   style={{ width: '100%', height: '100%' }}
+                  className="rounded-lg"
                   resizeMode="cover" // containだとサムネ全体が表示される
                 />
                 {/* 削除ボタン */}
@@ -201,7 +202,7 @@ export default function CreateScreen() {
               </View>
             ))}
             <Pressable
-              className="w-[44%] h-36 mb-8 items-center justify-center border-2 bg-gray-100 border-dotted border-gray-600"
+              className="w-[44%] h-36 mb-8 items-center justify-center rounded-md border-2 bg-gray-100 border-dotted border-gray-600"
               onPress={pickVideos}
             >
               <MaterialCommunityIcons name="plus-circle" size={56} color="#4b5563" />
@@ -241,7 +242,7 @@ export default function CreateScreen() {
                 label="準備中…"
                 style={{ width: "80%"}}
                 textStyle={{ fontSize: 24 }}
-                onPress={() => { /* 準備中は操作不可 */ }}
+                disabled='false'
               />
               <Progress
                 className="mt-2 w-5/6 h-1"
