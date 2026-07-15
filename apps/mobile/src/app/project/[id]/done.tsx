@@ -29,7 +29,7 @@ const formatTime = (seconds: number): string => {
 export default function DoneScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
 
-    const { data: project } = useProjectStatus(id);
+    const { data: project, isError, refetch } = useProjectStatus(id);
     const status = project?.status;
     const title = project?.title ?? "無題"
     const description = project?.description ?? "";
@@ -266,6 +266,18 @@ export default function DoneScreen() {
                         {project.errorMessage}
                     </Text>
                 )}
+            </View>
+            ) : isError ? (
+            <View className="flex-1 items-center justify-center px-8 gap-4">
+                <Text className="text-red-500 font-bold">通信に失敗しました</Text>
+                <Text className="text-xs text-gray-500 text-center">
+                    電波の良い場所で再度お試しください
+                </Text>
+                <Pressable
+                    onPress={() => refetch()}
+                    className="rounded-lg bg-primary px-6 py-2">
+                    <Text className="font-bold text-white">再試行</Text>
+                </Pressable>
             </View>
             ) : (
             <View className="flex-1 items-center justify-center px-8 gap-4">

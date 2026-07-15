@@ -29,7 +29,7 @@ export default function ScenesScreen() {
     const insets = useSafeAreaInsets();
 
     // GET /projects/{id} を polling。preparing→ready で clips(scenes+署名付きURL) が揃う。
-    const { data: project } = useProjectStatus(id);
+    const { data: project, isError, refetch } = useProjectStatus(id);
     const clips = project?.clips ?? [];
     
     // ビデオプレーヤーの幅
@@ -336,6 +336,18 @@ export default function ScenesScreen() {
                                 {project.errorMessage}
                             </Text>
                         )}
+                    </View>
+                ) : isError ? (
+                    <View className="flex-1 items-center justify-center px-8 gap-4">
+                        <Text className="text-center text-red-500 font-bold">通信に失敗しました</Text>
+                        <Text className="text-center text-xs text-gray-500">
+                            電波の良い場所で再度お試しください
+                        </Text>
+                        <Pressable
+                            onPress={() => refetch()}
+                            className="rounded-lg bg-primary px-6 py-2">
+                            <Text className="font-bold text-white">再試行</Text>
+                        </Pressable>
                     </View>
                 ) : (
                     <View className="flex-1 items-center justify-center px-8 gap-4">
