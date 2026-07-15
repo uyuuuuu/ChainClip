@@ -5,8 +5,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.domain.error import DomainError
 
-class FfmpegConversionError(Exception):
+
+class FfmpegConversionError(DomainError):
     """FFmpegによる変換・解析処理に失敗した場合。"""
 
 
