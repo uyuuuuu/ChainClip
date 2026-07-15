@@ -15,6 +15,7 @@
       }
     },
     "android": {
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -32,6 +33,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-dev-client",
+        {
+          "launchMode": "most-recent",
+          "toolsButton": false
+        }
+      ],
       [
         "expo-splash-screen",
         {
