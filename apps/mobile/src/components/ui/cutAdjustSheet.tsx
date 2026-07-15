@@ -304,8 +304,8 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
             gestureBase.current = { ...transformRef.current };
         })
         .onUpdate((e) => {
-            // ピンチアウト(scale>1) → 枠が大きくなる = 写る範囲が広がる = zoomは小さくなる
-            applyTransform({ ...transformRef.current, zoom: gestureBase.current.zoom / e.scale });
+            // ピンチアウト(scale>1) → 写る範囲が狭まる(cropSide = min(W,H)/zoom) = 映像が拡大 = zoomは大きくなる
+            applyTransform({ ...transformRef.current, zoom: gestureBase.current.zoom * e.scale });
         });
 
     // ドラッグとピンチを同時に受け付ける
