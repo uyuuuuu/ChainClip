@@ -12,7 +12,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GestureResponderEvent, KeyboardAvoidingView, Platform, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { Dimensions, GestureResponderEvent, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View, useWindowDimensions, type TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // 2つのプレーヤーの識別子
@@ -88,10 +88,11 @@ export default function ConfigScreen() {
         A: firstCut ?? null,
         B: null,
     });
-    // 正方形コンテナの一辺(px)。横幅基準の固定値（キーボード表示時もレイアウトが動かないように）
+    // 正方形コンテナの一辺(px)。キーボードで変化するwindowの高さは使わず、screenの高さを基準にする
     // 入力欄と出力ボタンまで1画面に収めるため、画面が縦に短いときは高さ側にも上限をかける
-    const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-    const playerSize = Math.floor(Math.min(windowWidth - 48, windowHeight * 0.38));
+    const { width: windowWidth } = useWindowDimensions();
+    const screenHeight = Dimensions.get('screen').height;
+    const playerSize = Math.floor(Math.min(windowWidth - 48, screenHeight * 0.38));
     // 画面下部の余白。SafeAreaViewのbottomは使わず、キーボードが出ていないときだけ自前で確保する
     const insets = useSafeAreaInsets();
     // 入力欄がキーボードに隠れないよう、フォーカス時に末尾までスクロールさせる
@@ -112,6 +113,8 @@ export default function ConfigScreen() {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [password, setPassword] = useState('');
+    const titleInputRef = useRef<TextInput>(null);
+    const descriptionInputRef = useRef<TextInput>(null);
 
     // イベントリスナーから最新値を読む用のref
     const timelineRef = useRef(timeline);
@@ -257,6 +260,18 @@ export default function ConfigScreen() {
             // エラー表示は startRender.isError で下部に出す
         }
     }
+
+    const openConfirmModal = () => {
+        if (startRender.isPending) return;
+        setIsConfirmModal(true);
+        Keyboard.dismiss();
+        // touch開始後にTextInputのネイティブフォーカスが走る場合があるため、次フレームでも解除する
+        requestAnimationFrame(() => {
+            titleInputRef.current?.blur();
+            descriptionInputRef.current?.blur();
+            Keyboard.dismiss();
+        });
+    };
 
     // プレーヤーの状態をUIに反映
     useEffect(() => {
@@ -430,16 +445,15 @@ export default function ConfigScreen() {
                 </Pressable>
                 <Text className="text-base font-bold">動画情報を設定</Text>
             </View>
+            {/* キーボード調整はiOSだけpaddingで行う。Androidはapp.jsonのpanに任せる */}
             <KeyboardAvoidingView
-                className="flex-1"
-                // iOSはScrollViewのautomaticallyAdjustKeyboardInsetsに任せる（二重に押し上げないよう無効化）
-                behavior={Platform.OS === 'ios' ? undefined : 'height'}
+                className="flex-1 overflow-hidden"
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             >
                 <ScrollView
                     ref={scrollRef}
-                    contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom }}
-                    keyboardShouldPersistTaps="handled"
-                    automaticallyAdjustKeyboardInsets
+                    contentContainerStyle={{ flexGrow: 1, paddingBottom: 8 }}
+                    keyboardShouldPersistTaps="always"
                 >
                     {/* ビデオプレーヤー */}
                     <View className="items-center justify-center mt-2">
@@ -515,8 +529,10 @@ export default function ConfigScreen() {
                         </View>
                         <View>
                             <Input
+                                ref={titleInputRef}
                                 placeholder="タイトルを入力してください"
                                 value={title}
+                                editable={!isConfirmModal}
                                 onChangeText={(value) => {
                                     if (value.length <= 20) setTitle(value);
                                 }}
@@ -529,8 +545,10 @@ export default function ConfigScreen() {
                             <Text className="text-md text-gray-400">{description.length} / 100</Text>
                         </View>
                         <Textarea
+                            ref={descriptionInputRef}
                             placeholder="詳細を入力してください"
                             value={description}
+                            editable={!isConfirmModal}
                             onChangeText={(value) => {
                                 if (value.length <= 100) setDescription(value);
                             }}
@@ -543,23 +561,27 @@ export default function ConfigScreen() {
                             style={{ height: 80 }} // 3行分の高さをスタイルで担保
                         />
                     </View>
-                    <View className="flex-1" />
-                    <View className="w-full mb-4 flex flex-col justify-center items-center">
-                        <GradientButton
-                            label={startRender.isPending ? '出力中…' : '完成動画を出力する'}
-                            style={{ width: "80%" }}
-                            textStyle={{ fontSize: 24 }}
-                            onPress={() => setIsConfirmModal(true)}
-                            disabled={startRender.isPending}
-                        />
-                        {startRender.isError && (
-                        <Text className="text-xs text-red-500" numberOfLines={2}>
-                            失敗: {String(startRender.error)}
-                        </Text>
-                        )}
-                    </View>
                 </ScrollView>
             </KeyboardAvoidingView>
+            {/* 出力ボタンはScrollViewの外に置く。中に入れるとキーボードが閉じる際の
+                レイアウト移動でボタンが指の下から逃げ、1回目のタップが入力欄に吸われる */}
+            <View
+                className="w-full flex flex-col justify-center items-center bg-white"
+                style={{ paddingBottom: insets.bottom + 16, zIndex: 1, elevation: 1 }}
+            >
+                <GradientButton
+                    label={startRender.isPending ? '出力中…' : '完成動画を出力する'}
+                    style={{ width: '80%' }}
+                    textStyle={{ fontSize: 24 }}
+                    onPress={openConfirmModal}
+                    disabled={startRender.isPending}
+                />
+                {startRender.isError && (
+                <Text className="text-xs text-red-500" numberOfLines={2}>
+                    失敗: {String(startRender.error)}
+                </Text>
+                )}
+            </View>
             <CustomModal
                 isOpen={isConfirmModal}
                 onOpenChange={setIsConfirmModal}
