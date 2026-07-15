@@ -9,7 +9,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useEffect, useState } from 'react';
-import { Alert, GestureResponderEvent, Pressable, ScrollView, Share, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, GestureResponderEvent, Pressable, ScrollView, Share, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DESCRIPTION_LINE_HEIGHT = 24;
@@ -64,7 +64,7 @@ export default function DoneScreen() {
     const [permission, requestPermission] = MediaLibrary.usePermissions({ writeOnly: true });
     // 保存処理中かどうか（ボタンの二重押し防止＆表示切り替え用）
     const [isSaving, setIsSaving] = useState(false);
-    
+
     // プレーヤーの状態をUIに反映
         useEffect(() => {
             const subs = [
@@ -175,13 +175,6 @@ export default function DoneScreen() {
             {/* ヘッダー */}
                 <View className="h-16 flex-row items-center justify-center">
                     <Text className="text-base font-bold">動画生成完了</Text>
-                    <Button
-                        className="absolute right-4 py-2 px-2"
-                        onPress={() =>
-                            router.push('/project/create')}
-                    >
-                        <Text className="font-md">ホームへ</Text>
-                    </Button>
                 </View>
             {/* ビデオプレーヤー */}
             <View className="items-center">
@@ -241,20 +234,31 @@ export default function DoneScreen() {
                         </Text>
                     </ScrollView>
                 </View>
-                
+
                 <View className="flex-1" />
 
-                <View className="mx-6 my-4 flex-row justify-center gap-12">
-                    <Button className="h-auto py-4 self-center px-4 gap-1 flex flex-col justify-center items-center"
+                <View className="mx-6 mt-4 mb-8 flex-row justify-center gap-6">
+                    <Button className="h-auto py-3 px-6 gap-2 flex-row justify-center items-center"
                         onPress={handleSave}
                         style={{ opacity: isSaving ? 0.4 : 1 }}>
-                        <MaterialCommunityIcons name="content-save" size={42} color="white" />
+                        <MaterialCommunityIcons name="content-save" size={24} color="white" />
                         <Text className="font-bold text-lg">{isSaving ? '保存中…' : '保存する'}</Text>
                     </Button>
-                    <Button className="h-auto py-4 self-center px-4 gap-1 flex flex-col justify-center items-center"
+                    <Button className="h-auto py-3 px-6 gap-2 flex-row justify-center items-center"
                         onPress={handleShare}>
-                        <MaterialCommunityIcons name="share-variant" size={42} color="white" />
+                        <MaterialCommunityIcons name="share-variant" size={24} color="white" />
                         <Text className="font-bold text-lg">共有する</Text>
+                    </Button>
+                </View>
+
+                {/* ホームへ戻る */}
+                <View className="mx-6 mb-4 items-center">
+                    <Button
+                        variant="outline"
+                        className="h-auto py-2 px-6"
+                        onPress={() => router.push('/project/create')}
+                    >
+                        <Text className="font-md">ホームへ</Text>
                     </Button>
                 </View>
             </>
@@ -281,7 +285,8 @@ export default function DoneScreen() {
             </View>
             ) : (
             <View className="flex-1 items-center justify-center px-8 gap-4">
-                <Text className="text-gray-500">完成動画を生成中…</Text>
+                <ActivityIndicator size="large" color="#029FFF" />
+                <Text className="text-center text-xl font-bold text-[#029FFF]">完成動画を生成中…</Text>
             </View>
             )}
         </SafeAreaView>

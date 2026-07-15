@@ -630,8 +630,21 @@ export default function EditorScreen() {
         );
     }
 
+    // 設定ポップアップを閉じる（サブメニューも一緒に）
+    const closeSettings = () => {
+        setShowSettings(false);
+        setShowCutSecMenu(false);
+    };
+
     return (
         <SafeAreaView className="w-full flex-1 bg-white">
+            {/* ポップアップの外側をタップしたら閉じるための透明な層 */}
+            {showSettings && (
+                <Pressable
+                    className="absolute inset-0 z-[5]"
+                    onPress={closeSettings}
+                />
+            )}
             {/* ヘッダー */}
             <View className="h-16 flex-row items-center justify-center">
                 <Pressable onPress={() => router.back()} className="absolute left-2 p-2">
@@ -697,7 +710,8 @@ export default function EditorScreen() {
                     })}
                 </View>
             </View>
-            <View className="h-8 my-2 flex-row items-center justify-center gap-2">
+            {/* 歯車を閉じる用の透明な層より前面に出すため z-10 */}
+            <View className="h-8 my-2 z-10 flex-row items-center justify-center gap-2">
                 {/* 再生ボタン */}
                 <Pressable onPress={togglePlay} hitSlop={8}>
                     <MaterialCommunityIcons
@@ -736,7 +750,7 @@ export default function EditorScreen() {
                 {/* 設定ポップアップ */}
                 {showSettings && (
                     <View
-                        className="absolute bottom-10 right-4 z-10 w-60 rounded-xl bg-white p-3 shadow-md shadow-gray-300"
+                        className="absolute bottom-10 right-4 z-10 w-60 rounded-xl bg-white p-3 shadow-md shadow-black/20"
                         style={{ elevation: 8 }}
                     >
                         {/* カット秒数 */}
@@ -761,6 +775,8 @@ export default function EditorScreen() {
                                     playerB.muted = v;
                                 }}
                                 trackColor={{ true: '#22d3ee' }}
+                                // Switchはサイズ指定ができないので縮小して合わせる
+                                style={{ transform: [{ scale: 0.8 }] }}
                             />
                         </View>
                         <View className="h-9 flex-row items-center justify-between">
@@ -770,6 +786,7 @@ export default function EditorScreen() {
                                 value={transition === 'fade'}
                                 onValueChange={(v) => setTransition(v ? 'fade' : 'none')}
                                 trackColor={{ true: '#22d3ee' }}
+                                style={{ transform: [{ scale: 0.8 }] }}
                             />
                         </View>
                     </View>
@@ -778,7 +795,7 @@ export default function EditorScreen() {
                 {/* カット秒数の選択肢ポップアップ */}
                 {showSettings && showCutSecMenu && (
                     <View
-                        className="absolute bottom-36 right-14 z-20 w-28 rounded-xl bg-white p-2 shadow-md shadow-gray-300"
+                        className="absolute bottom-36 right-14 z-20 w-28 rounded-xl bg-white p-2 shadow-md shadow-black/20"
                         style={{ elevation: 9 }}
                     >
                         {[3, 5, 10].map((sec) => (
@@ -806,9 +823,12 @@ export default function EditorScreen() {
 
             <View className="pb-2">
                 {/* 並び替えヒント */}
-                <Text className="mt-2 px-6 text-right text-[11px] text-gray-400">
-                    ハンドルを掴んで並び替えられます
-                </Text>
+                <View className="mt-2 px-6 flex-row items-center justify-end gap-1">
+                    <MaterialCommunityIcons name="lightbulb-on-outline" size={13} color="#9ca3af" />
+                    <Text className="text-[11px] text-gray-400">
+                        ハンドルを掴んで並び替えられます
+                    </Text>
+                </View>
 
                 {/* タイムライン */}
                 <DraggableFlatList

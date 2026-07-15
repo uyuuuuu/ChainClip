@@ -9,7 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -364,6 +364,7 @@ export default function ScenesScreen() {
                     </View>
                 ) : (
                     <View className="flex-1 items-center justify-center px-8 gap-4">
+                        <ActivityIndicator size="large" color="#029FFF" />
                         <Text className="text-center text-xl font-bold text-[#029FFF]">動画を解析中…</Text>
                         {project?.clipsTotal != null ? (
                             <Text className="text-xs text-gray-500">
@@ -374,14 +375,6 @@ export default function ScenesScreen() {
                                 動画を読み込んでいます
                             </Text>
                         )}
-                        <Progress
-                            className="w-2/3 h-1"
-                            value={
-                                project?.clipsTotal
-                                    ? ((project.clipsReady ?? 0) / project.clipsTotal) * 100
-                                    : 0
-                            }
-                        />
                     </View>
                 )}
             </SafeAreaView>

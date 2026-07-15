@@ -12,8 +12,8 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { GestureResponderEvent, Pressable, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { GestureResponderEvent, KeyboardAvoidingView, Platform, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // 2つのプレーヤーの識別子
 type PlayerKey = 'A' | 'B';
@@ -57,7 +57,7 @@ const formatTime = (seconds: number): string => {
 
 export default function ConfigScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
-    
+
     const { data: project } = useProjectStatus(id);
     const clipMap = useMemo<ClipMap>(() => buildClipMap(project?.clips), [project?.clips]);
 
@@ -88,8 +88,14 @@ export default function ConfigScreen() {
         A: firstCut ?? null,
         B: null,
     });
-    // 正方形コンテナの実際の一辺(px)
-    const [playerSize, setPlayerSize] = useState(0);
+    // 正方形コンテナの一辺(px)。横幅基準の固定値（キーボード表示時もレイアウトが動かないように）
+    // 入力欄と出力ボタンまで1画面に収めるため、画面が縦に短いときは高さ側にも上限をかける
+    const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+    const playerSize = Math.floor(Math.min(windowWidth - 48, windowHeight * 0.38));
+    // 画面下部の余白。SafeAreaViewのbottomは使わず、キーボードが出ていないときだけ自前で確保する
+    const insets = useSafeAreaInsets();
+    // 入力欄がキーボードに隠れないよう、フォーカス時に末尾までスクロールさせる
+    const scrollRef = useRef<ScrollView>(null);
     // 読み込みできているかどうか（同期エラー防ぎ）
     const [isReady, setIsReady] = useState(false);
     // 再生されているかどうか
@@ -233,7 +239,7 @@ export default function ConfigScreen() {
         // その次のカットを先読み
         prepareNext();
     };
-    
+
     async function handleRender() {
         try {
             await startRender.mutateAsync({
@@ -416,7 +422,7 @@ export default function ConfigScreen() {
     // }
 
     return (
-        <SafeAreaView className="w-full flex-1 bg-white">
+        <SafeAreaView className="w-full flex-1 bg-white" edges={['top', 'left', 'right']}>
             {/* ヘッダー */}
             <View className="h-16 flex-row items-center justify-center">
                 <Pressable onPress={() => router.back()} className="absolute left-2 p-2">
@@ -424,132 +430,143 @@ export default function ConfigScreen() {
                 </Pressable>
                 <Text className="text-base font-bold">動画情報を設定</Text>
             </View>
-            {/* ビデオプレーヤー */}
-            <View
-                className="flex-1 items-center justify-center"
-                onLayout={(e) => {
-                    const { width, height } = e.nativeEvent.layout;
-                    // 横は左右の余白(24pxずつ)を引いた幅まで、縦は使える高さまで。小さい方に合わせる
-                    setPlayerSize(Math.max(0, Math.floor(Math.min(width - 48, height))));
-                }}
+            <KeyboardAvoidingView
+                className="flex-1"
+                // iOSはScrollViewのautomaticallyAdjustKeyboardInsetsに任せる（二重に押し上げないよう無効化）
+                behavior={Platform.OS === 'ios' ? undefined : 'height'}
             >
-                <View
-                    className="bg-black overflow-hidden rounded-xl"
-                    style={{ width: playerSize, height: playerSize }}
+                <ScrollView
+                    ref={scrollRef}
+                    contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom }}
+                    keyboardShouldPersistTaps="handled"
+                    automaticallyAdjustKeyboardInsets
                 >
-                    {(['A', 'B'] as const).map((key) => {
-                        const layout = videoLayoutFor(shownCuts[key], playerSize, clipMap);
-                        const isFront = activeKey === key;
-                        return (
-                            <View
-                                key={key}
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 0,
-                                    opacity: isFront ? 1 : 0, // 裏は完全に見えない
-                                    zIndex: isFront ? 2 : 1, // 表を手前に
-                                }}
+                    {/* ビデオプレーヤー */}
+                    <View className="items-center justify-center mt-2">
+                        <View
+                            className="bg-black overflow-hidden rounded-xl"
+                            style={{ width: playerSize, height: playerSize }}
+                        >
+                            {(['A', 'B'] as const).map((key) => {
+                                const layout = videoLayoutFor(shownCuts[key], playerSize, clipMap);
+                                const isFront = activeKey === key;
+                                return (
+                                    <View
+                                        key={key}
+                                        style={{
+                                            position: 'absolute',
+                                            top: 0,
+                                            left: 0,
+                                            right: 0,
+                                            bottom: 0,
+                                            opacity: isFront ? 1 : 0, // 裏は完全に見えない
+                                            zIndex: isFront ? 2 : 1, // 表を手前に
+                                        }}
+                                    >
+                                        <VideoView
+                                            player={getPlayer(key)}
+                                            style={{
+                                                position: 'absolute',
+                                                width: layout.width,
+                                                height: layout.height,
+                                                left: layout.left,
+                                                top: layout.top,
+                                            }}
+                                            contentFit="fill"
+                                            nativeControls={false}
+                                        />
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    </View>
+                    <View className="h-8 my-2 flex-row items-center justify-center gap-2">
+                        {/* 再生ボタン */}
+                        <Pressable onPress={togglePlay} hitSlop={8}>
+                            <MaterialCommunityIcons
+                                name={isPlaying ? 'pause' : 'play'}
+                                size={32}
+                                color="#262626"
+                            />
+                        </Pressable>
+                        <View
+                            className="relative w-9/12"
+                            onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+                        >
+                            {/* 時間表示 */}
+                            <Text className="absolute bottom-4 left-0 text-[10px] text-gray-500">
+                                {formatTime(elapsedMs / 1000)} / {formatTime(totalMs / 1000)}
+                            </Text>
+                            {/* シークバー */}
+                            <Pressable
+                                className="py-2"
+                                onPress={isReady ? handleSeek : undefined}
+                                style={{ opacity: isReady ? 1 : 0.4 }}
                             >
-                                <VideoView
-                                    player={getPlayer(key)}
-                                    style={{
-                                        position: 'absolute',
-                                        width: layout.width,
-                                        height: layout.height,
-                                        left: layout.left,
-                                        top: layout.top,
-                                    }}
-                                    contentFit="fill"
-                                    nativeControls={false}
-                                />
-                            </View>
-                        );
-                    })}
-                </View>
-            </View>
-            <View className="h-8 my-2 flex-row items-center justify-center gap-2">
-                {/* 再生ボタン */}
-                <Pressable onPress={togglePlay} hitSlop={8}>
-                    <MaterialCommunityIcons
-                        name={isPlaying ? 'pause' : 'play'}
-                        size={32}
-                        color="#262626"
-                    />
-                </Pressable>
-                <View
-                    className="relative w-9/12"
-                    onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
-                >
-                    {/* 時間表示 */}
-                    <Text className="absolute bottom-4 left-0 text-[10px] text-gray-500">
-                        {formatTime(elapsedMs / 1000)} / {formatTime(totalMs / 1000)}
-                    </Text>
-                    {/* シークバー */}
-                    <Pressable
-                        className="py-2"
-                        onPress={isReady ? handleSeek : undefined}
-                        style={{ opacity: isReady ? 1 : 0.4 }}
-                    >
-                        <Progress className="h-1.5 w-full" value={progressValue} />
-                    </Pressable>
-                </View>
-            </View>
+                                <Progress className="h-1.5 w-full" value={progressValue} />
+                            </Pressable>
+                        </View>
+                    </View>
 
-            <View className="mx-6 my-3 gap-2 rounded-xl">
-                <View className="flex-row justify-between items-end">
-                    <Text className="text-lg font-semibold text-[#262626]">タイトル (任意)</Text>
-                    <Text className="text-md text-gray-400">{title.length} / 20</Text>
-                </View>
-                <View>
-                    <Input
-                        placeholder="タイトルを入力してください"
-                        value={title}
-                        onChangeText={(value) => {
-                            if (value.length <= 20) setTitle(value);
-                        }}
-                        className="mb-2"
-                    />
-                </View>
-            </View>
-            <View className="mx-6 mb-3 gap-2 rounded-xl">
-                <View className="flex-row justify-between items-end">
-                    <Text className="text-lg font-semibold text-[#262626]">説明文(任意)</Text>
-                    <Text className="text-md text-gray-400">{description.length} / 100</Text>
-                </View>
-                <Textarea
-                    placeholder="詳細を入力してください"
-                    value={description}
-                    onChangeText={(value) => {
-                        if (value.length <= 100) setDescription(value);
-                    }}
-                    multiline={true}
-                    numberOfLines={3}
-                    className="mb-2"
-                    style={{ height: 80 }} // 3行分の高さをスタイルで担保
-                />
-            </View>
-            <View className="w-full my-4 flex flex-col justify-center items-center">
-                <GradientButton
-                    label={startRender.isPending ? '出力中…' : '完成動画を出力する'}
-                    style={{ width: "80%" }}
-                    textStyle={{ fontSize: 24 }}
-                    onPress={() => setIsConfirmModal(true)}
-                    disabled={startRender.isPending}
-                />
-                {startRender.isError && (
-                <Text className="text-xs text-red-500" numberOfLines={2}>
-                    失敗: {String(startRender.error)}
-                </Text>
-                )}
-            </View>
-                <CustomModal                                isOpen={isConfirmModal}
-                    isOpenChange={setIsConfirmModal}
-                    title="動画を作成してもよろしいですか"
-                    description="OKを押すと編集に戻れません"
-                    onConfirm={handleRender}/>
+                    <View className="mx-6 mt-1 mb-2 gap-1 rounded-xl">
+                        <View className="flex-row justify-between items-end">
+                            <Text className="text-lg font-semibold text-[#262626]">タイトル (任意)</Text>
+                            <Text className="text-md text-gray-400">{title.length} / 20</Text>
+                        </View>
+                        <View>
+                            <Input
+                                placeholder="タイトルを入力してください"
+                                value={title}
+                                onChangeText={(value) => {
+                                    if (value.length <= 20) setTitle(value);
+                                }}
+                            />
+                        </View>
+                    </View>
+                    <View className="mx-6 mb-2 gap-1 rounded-xl">
+                        <View className="flex-row justify-between items-end">
+                            <Text className="text-lg font-semibold text-[#262626]">説明文(任意)</Text>
+                            <Text className="text-md text-gray-400">{description.length} / 100</Text>
+                        </View>
+                        <Textarea
+                            placeholder="詳細を入力してください"
+                            value={description}
+                            onChangeText={(value) => {
+                                if (value.length <= 100) setDescription(value);
+                            }}
+                            onFocus={() => {
+                                // キーボードが出きるのを待ってから、入力欄が見える位置までスクロール
+                                setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+                            }}
+                            multiline={true}
+                            numberOfLines={3}
+                            style={{ height: 80 }} // 3行分の高さをスタイルで担保
+                        />
+                    </View>
+                    <View className="flex-1" />
+                    <View className="w-full mb-4 flex flex-col justify-center items-center">
+                        <GradientButton
+                            label={startRender.isPending ? '出力中…' : '完成動画を出力する'}
+                            style={{ width: "80%" }}
+                            textStyle={{ fontSize: 24 }}
+                            onPress={() => setIsConfirmModal(true)}
+                            disabled={startRender.isPending}
+                        />
+                        {startRender.isError && (
+                        <Text className="text-xs text-red-500" numberOfLines={2}>
+                            失敗: {String(startRender.error)}
+                        </Text>
+                        )}
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
+            <CustomModal
+                isOpen={isConfirmModal}
+                onOpenChange={setIsConfirmModal}
+                title="動画を作成してもよろしいですか"
+                description="OKを押すと編集に戻れません"
+                onConfirm={handleRender}
+            />
         </SafeAreaView>
     );
 }
