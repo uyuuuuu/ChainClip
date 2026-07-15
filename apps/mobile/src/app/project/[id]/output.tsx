@@ -88,8 +88,9 @@ export default function ConfigScreen() {
         B: null,
     });
     // 正方形コンテナの一辺(px)。横幅基準の固定値（キーボード表示時もレイアウトが動かないように）
-    const { width: windowWidth } = useWindowDimensions();
-    const playerSize = Math.floor(windowWidth - 48);
+    // 入力欄と出力ボタンまで1画面に収めるため、画面が縦に短いときは高さ側にも上限をかける
+    const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+    const playerSize = Math.floor(Math.min(windowWidth - 48, windowHeight * 0.38));
     // 画面下部の余白。SafeAreaViewのbottomは使わず、キーボードが出ていないときだけ自前で確保する
     const insets = useSafeAreaInsets();
     // 入力欄がキーボードに隠れないよう、フォーカス時に末尾までスクロールさせる
@@ -504,7 +505,7 @@ export default function ConfigScreen() {
                         </View>
                     </View>
 
-                    <View className="mx-6 my-3 gap-2 rounded-xl">
+                    <View className="mx-6 mt-1 mb-2 gap-1 rounded-xl">
                         <View className="flex-row justify-between items-end">
                             <Text className="text-lg font-semibold text-[#262626]">タイトル (任意)</Text>
                             <Text className="text-md text-gray-400">{title.length} / 20</Text>
@@ -516,11 +517,10 @@ export default function ConfigScreen() {
                                 onChangeText={(value) => {
                                     if (value.length <= 20) setTitle(value);
                                 }}
-                                className="mb-2"
                             />
                         </View>
                     </View>
-                    <View className="mx-6 mb-3 gap-2 rounded-xl">
+                    <View className="mx-6 mb-2 gap-1 rounded-xl">
                         <View className="flex-row justify-between items-end">
                             <Text className="text-lg font-semibold text-[#262626]">説明文(任意)</Text>
                             <Text className="text-md text-gray-400">{description.length} / 100</Text>
@@ -537,12 +537,11 @@ export default function ConfigScreen() {
                             }}
                             multiline={true}
                             numberOfLines={3}
-                            className="mb-2"
                             style={{ height: 80 }} // 3行分の高さをスタイルで担保
                         />
                     </View>
                     <View className="flex-1" />
-                    <View className="w-full my-4 flex flex-col justify-center items-center">
+                    <View className="w-full mb-4 flex flex-col justify-center items-center">
                         <GradientButton
                             label={startRender.isPending ? '出力中…' : '完成動画を出力する'}
                             style={{ width: "80%" }}
