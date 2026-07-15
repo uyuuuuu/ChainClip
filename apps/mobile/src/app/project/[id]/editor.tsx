@@ -159,7 +159,7 @@ export default function EditorScreen() {
     const playingCutIdRef = useRef<string | null>(firstCut?.cutId ?? null);
     // いま各プレーヤーに読み込まれている元動画
     const loadedClip = useRef<Record<PlayerKey, string | null>>({
-        A: firstCut?.clipId ?? null,
+        A: null,
         B: null,
     });
     // 読み込み完了後にシークするもの
@@ -555,7 +555,7 @@ export default function EditorScreen() {
                     <Pressable
                         onPress={() => handleSelectCut(cut)}
                         disabled={isActive}
-                        className={`overflow-hidden rounded-lg border-2 ${isSelected ? 'border-primary' : 'border-transparent'}`}
+                        className={`overflow-hidden rounded-lg ${isSelected ? 'border-2 border-primary' : ''}`}
                     >
                         {/* サムネイル */}
                         {thumb ? (
@@ -663,6 +663,7 @@ export default function EditorScreen() {
                 >
                     {(['A', 'B'] as const).map((key) => {
                         const layout = videoLayoutFor(shownCuts[key], playerSize, clipMap);
+                        const isFront = activeKey === key;
                         return (
                             <View
                                 key={key}
@@ -826,7 +827,7 @@ export default function EditorScreen() {
 
                 {/* 選択中カットの詳細カード */}
                 {selectedCut && (
-                    <View className="mx-4 mt-4 gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-md shadow-gray-100">
+                    <View className="mx-4 mt-4 gap-3 rounded-2xl border border-gray-200 bg-white p-4">
                         <View className="flex-row items-center gap-3">
                             {/* サムネイル */}
                             <View className="relative">
@@ -854,7 +855,7 @@ export default function EditorScreen() {
                                 {findLabels(selectedCut, clipMap).slice(0, 3).map((tag) => (
                                     <View
                                         key={tag}
-                                        className="rounded-md bg-slate-100 px-2.5 py-0.5 shadow-md shadow-gray-100"
+                                        className="rounded-md bg-slate-200 px-2.5 py-0.5 shadow-md shadow-gray-100"
                                     >
                                         <Text className="text-xs font-semibold text-[#262626]" numberOfLines={1}>
                                             {tag}

@@ -8,7 +8,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View } from 'react-native';
+import { FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -31,6 +31,11 @@ export default function ScenesScreen() {
     // GET /projects/{id} を polling。preparing→ready で clips(scenes+署名付きURL) が揃う。
     const { data: project } = useProjectStatus(id);
     const clips = project?.clips ?? [];
+    
+    // ビデオプレーヤーの幅
+    const { width: windowWidth } = useWindowDimensions();
+    const playerWidth = windowWidth - 48; // 左右 mx-6 = 24px × 2
+    const playerHeight = Math.floor(playerWidth * 9 / 16);
 
     // clips を「シーン1件ずつ」に平坦化する。ready 前は空配列。
     const ALL_SCENES = useMemo<SceneItem[]>(
@@ -315,24 +320,26 @@ export default function ScenesScreen() {
     if (projectStatus !== 'ready') {
         const isFailed = projectStatus === 'failed';
         return (
-            <SafeAreaView className="w-full flex-1 bg-white items-center justify-center px-8 gap-4">
-                <View className="h-16 flex-row items-center justify-center absolute top-0 left-0 right-0">
-                    <Pressable onPress={() => router.back()} className="absolute left-2 p-2">
+            <SafeAreaView className="w-full flex-1 bg-white">
+                <View className="h-16 flex-row items-center justify-center">
+                    <Pressable
+                        onPress={() => router.back()}
+                        className="absolute left-2 p-2">
                         <MaterialCommunityIcons name="chevron-left" size={48} color="#262626" />
                     </Pressable>
                 </View>
                 {isFailed ? (
-                    <>
+                    <View className="flex-1 items-center justify-center px-8 gap-4">
                         <Text className="text-center text-red-500 font-bold">解析に失敗しました</Text>
                         {project?.errorMessage && (
                             <Text className="text-center text-xs text-gray-500" numberOfLines={3}>
                                 {project.errorMessage}
                             </Text>
                         )}
-                    </>
+                    </View>
                 ) : (
-                    <>
-                        <Text className="text-center text-base font-bold text-[#029FFF]">動画を解析中…</Text>
+                    <View className="flex-1 items-center justify-center px-8 gap-4">
+                        <Text className="text-center text-xl font-bold text-[#029FFF]">動画を解析中…</Text>
                         {project?.clipsTotal != null && (
                             <Text className="text-xs text-gray-500">
                                 {project.clipsReady ?? 0} / {project.clipsTotal} 本 完了
@@ -346,14 +353,14 @@ export default function ScenesScreen() {
                                     : 0
                             }
                         />
-                    </>
+                    </View>
                 )}
             </SafeAreaView>
         );
     }
 
     return (
-        <SafeAreaView className="w-full flex-1 bg-white">
+            <SafeAreaView className="w-full flex-1 bg-white">
 
             {/* ヘッダー */}
             <View className="h-16 flex-row items-center justify-center">
@@ -366,10 +373,10 @@ export default function ScenesScreen() {
             </View>
 
             {/* ビデオプレーヤー */}
-            <View className="bg-black mx-6 mb-2 aspect-video overflow-hidden rounded-xl">
+            <View className="bg-black mb-2 overflow-hidden rounded-xl self-center">
                 <VideoView
                     player={player}
-                    style={{ width: '100%', height: '100%' }}
+                    style={{ width: playerWidth, height: playerHeight }}
                     contentFit="contain"
                     nativeControls={false}
                 />
@@ -413,7 +420,7 @@ export default function ScenesScreen() {
                     <Pressable
                         key={tag}
                         onPress={() => setActiveTag(tag)}
-                        className={`rounded-md px-4 py-1.5 shadow-md shadow-gray-100 ${activeTag === tag ? 'bg-primary' : 'bg-slate-100'}`}
+                        className={`rounded-md px-4 py-1.5  ${activeTag === tag ? 'bg-primary' : 'bg-slate-200'}`}
                     >
                         <Text className={`text-sm font-bold ${activeTag === tag ? 'text-white' : 'text-[#262626]'}`}>
                             {tag}
@@ -478,7 +485,7 @@ export default function ScenesScreen() {
                                 {item.labels.slice(0, 3).map((tag) => (
                                     <View
                                         key={tag}
-                                        className="rounded-md px-2.5 py-0.5 bg-slate-100 shadow-md shadow-gray-100"
+                                        className="rounded-md px-2.5 py-0.5 bg-slate-200"
                                     >
                                         <Text
                                             className="text-xs font-semibold text-[#262626]"

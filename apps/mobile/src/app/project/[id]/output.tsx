@@ -4,11 +4,13 @@ import { Input } from "@/components/ui/input";
 import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
 import { Textarea } from "@/components/ui/textarea";
+import { useProjectStatus } from '@/hooks/useProjectStatus';
+import { buildClipMap, type ClipMap } from '@/lib/clipMap';
 import { useEditStore, type Cut } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GestureResponderEvent, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,8 +18,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 type PlayerKey = 'A' | 'B';
 
 // ビデオプレーヤーによって映す位置
-const videoLayoutFor = (cut: Cut | null, containerSize: number) => {
-    const clip = cut ? CLIP_MAP[cut.clipId] : undefined;
+const videoLayoutFor = (cut: Cut | null, containerSize: number, clipMap: ClipMap) => {
+    const clip = cut ? clipMap[cut.clipId] : undefined;
     if (!cut || !clip || !containerSize) {
         // 計算できないうちはコンテナいっぱいに表示
         return { width: '100%' as const, height: '100%' as const, left: 0, top: 0 };
@@ -54,8 +56,12 @@ const formatTime = (seconds: number): string => {
 
 export default function ConfigScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
+    
+    const { data: project } = useProjectStatus(id);
+    const clipMap = useMemo<ClipMap>(() => buildClipMap(project?.clips), [project?.clips]);
 
     /* Zustand */
+    const timeline = useEditStore((s) => s.timeline);
     const reset = useEditStore((s) => s.reset);
     const startRender = useStartRender();
 
@@ -63,7 +69,7 @@ export default function ConfigScreen() {
     const firstCut = timeline[0];
 
     // プレーヤー
-    const initialSource = useRef(firstCut ? (CLIP_MAP[firstCut.clipId]?.video ?? null) : null);
+    const initialSource = useRef(firstCut ? (clipMap[firstCut.clipId]?.videoUrl ?? null) : null);
     const playerA = useVideoPlayer(initialSource.current, (p) => {
         p.timeUpdateEventInterval = 0.25; // 再生位置イベントを0.25秒ごとに発火
         p.loop = false;
@@ -123,7 +129,7 @@ export default function ConfigScreen() {
     const loadCutInto = (key: PlayerKey, cut: Cut, seekMs = cut.startMs) =>
         new Promise<void>((resolve) => {
             const player = getPlayer(key);
-            const clip = CLIP_MAP[cut.clipId];
+            const clip = clipMap[cut.clipId];
             if (!clip) {
                 resolve();
                 return;
@@ -142,7 +148,7 @@ export default function ConfigScreen() {
             pendingSeek.current[key] = { seekMs, resolve };
             if (loadedClip.current[key] !== cut.clipId) {
                 loadedClip.current[key] = cut.clipId;
-                player.replaceAsync(clip.video).catch((e) => {
+                player.replaceAsync(clip.videoUrl).catch((e) => {
                     console.warn('動画の差し替えが中断されました:', e);
                 });
             }
@@ -429,7 +435,7 @@ export default function ConfigScreen() {
                     style={{ width: playerSize, height: playerSize }}
                 >
                     {(['A', 'B'] as const).map((key) => {
-                        const layout = videoLayoutFor(shownCuts[key], playerSize);
+                        const layout = videoLayoutFor(shownCuts[key], playerSize, clipMap);
                         const isFront = activeKey === key;
                         return (
                             <View
@@ -491,10 +497,7 @@ export default function ConfigScreen() {
 
             <View className="mx-6 my-3 gap-2 rounded-xl">
                 <View className="flex-row justify-between items-end">
-                    <View className="flex-row">
-                        <Text className="text-lg font-semibold text-[#262626]">タイトル (任意)</Text>
-                        <Text className="text-lg font-semibold text-red-500"> *</Text>
-                    </View>
+                    <Text className="text-lg font-semibold text-[#262626]">タイトル (任意)</Text>
                     <Text className="text-md text-gray-400">{title.length} / 20</Text>
                 </View>
                 <View>
@@ -517,7 +520,7 @@ export default function ConfigScreen() {
                     placeholder="詳細を入力してください"
                     value={description}
                     onChangeText={(value) => {
-                        if (value.length <= 20) setDescription(value);
+                        if (value.length <= 100) setDescription(value);
                     }}
                     multiline={true}
                     numberOfLines={3}
@@ -530,9 +533,8 @@ export default function ConfigScreen() {
                     label={startRender.isPending ? '出力中…' : '完成動画を出力する'}
                     style={{ width: "80%" }}
                     textStyle={{ fontSize: 24 }}
-                    onPress={handleRender)
+                    onPress={handleRender}
                     disabled={startRender.isPending}
-                    }
                 />
                 {startRender.isError && (
                 <Text className="text-xs text-red-500" numberOfLines={2}>
