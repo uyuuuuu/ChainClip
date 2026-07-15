@@ -52,6 +52,8 @@ class ProjectStatusResult:
     error_message: str | None = None
     share_url: str | None = None
     final_video_url: str | None = None
+    title: str | None = None
+    description: str | None = None
 
 
 def get_project_status(
@@ -101,6 +103,8 @@ def get_project_status(
             status=project.status.value,
             share_url=f"{web_base_url.rstrip('/')}/s/{project.share_slug}",
             final_video_url=final_clip.public_url,
+            title=project.title,
+            description=project.description,
         )
 
     if project.status == ProjectStatus.FAILED:

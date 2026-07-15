@@ -166,6 +166,8 @@ class GetProjectStatusResponse(BaseModel):
     error_message: str | None = Field(default=None, alias="errorMessage")
     share_url: str | None = Field(default=None, alias="shareUrl")
     final_video_url: str | None = Field(default=None, alias="finalVideoUrl")
+    title: str | None = None
+    description: str | None = None
 
 
 @router.get("/{project_id}", response_model=GetProjectStatusResponse)
@@ -217,4 +219,6 @@ async def get_project_status_endpoint(
         error_message=result.error_message,
         share_url=result.share_url,
         final_video_url=result.final_video_url,
+        title=result.title,
+        description=result.description,
     )
