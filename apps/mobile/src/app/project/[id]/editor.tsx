@@ -627,8 +627,21 @@ export default function EditorScreen() {
         );
     }
 
+    // 設定ポップアップを閉じる（サブメニューも一緒に）
+    const closeSettings = () => {
+        setShowSettings(false);
+        setShowCutSecMenu(false);
+    };
+
     return (
         <SafeAreaView className="w-full flex-1 bg-white">
+            {/* ポップアップの外側をタップしたら閉じるための透明な層 */}
+            {showSettings && (
+                <Pressable
+                    className="absolute inset-0 z-[5]"
+                    onPress={closeSettings}
+                />
+            )}
             {/* ヘッダー */}
             <View className="h-16 flex-row items-center justify-center">
                 <Pressable onPress={() => router.back()} className="absolute left-2 p-2">
@@ -694,7 +707,8 @@ export default function EditorScreen() {
                     })}
                 </View>
             </View>
-            <View className="h-8 my-2 flex-row items-center justify-center gap-2">
+            {/* 歯車を閉じる用の透明な層より前面に出すため z-10 */}
+            <View className="h-8 my-2 z-10 flex-row items-center justify-center gap-2">
                 {/* 再生ボタン */}
                 <Pressable onPress={togglePlay} hitSlop={8}>
                     <MaterialCommunityIcons
