@@ -4,14 +4,14 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.domain.asset import AssetKind, ProjectAsset, StorageProvider
 from app.domain.clip import Clip, ClipStatus
 from app.domain.job import JobStatus, JobType, ProcessingJob
 from app.domain.project import Project, ProjectStatus
-from app.infra.db.models import ProjectModel
+from app.infra.db.models import ProcessingJobModel, ProjectModel
 from app.infra.db.repository import AssetRepo, ClipRepo, ProcessingJobRepo, ProjectRepo
 
 
@@ -234,3 +234,53 @@ def test_deleting_project_cascades_to_clips_and_assets(session: Session) -> None
     session.commit()
 
     assert clip_repo.get_by_id(clip.id) is None
+
+
+def test_project_repo_delete_removes_project_and_all_related_rows(session: Session) -> None:
+    """ProjectRepo.deleteでproject行を消すと、clips/assets/jobsの関連行もCASCADEで消える。"""
+    project_repo = ProjectRepo(session)
+    clip_repo = ClipRepo(session)
+    asset_repo = AssetRepo(session)
+    job_repo = ProcessingJobRepo(session)
+    project = project_repo.create(Project.create(device_id=uuid.uuid4()))
+    clip = clip_repo.create_many(
+        [
+            Clip.create(
+                project_id=project.id,
+                clip_index=0,
+                original_filename="a.mp4",
+                content_type="video/mp4",
+                size_bytes=10,
+            )
+        ]
+    )[0]
+    asset_repo.create(
+        ProjectAsset.create(
+            project_id=project.id,
+            clip_id=clip.id,
+            kind=AssetKind.FINAL_CLIP,
+            storage_provider=StorageProvider.R2,
+            bucket="test-bucket",
+            object_key="final/x.mp4",
+        )
+    )
+    job_repo.create(ProcessingJob.create(project_id=project.id, job_type=JobType.RENDER_FINAL))
+
+    project_repo.delete(project.id)
+
+    assert project_repo.get_by_id(project.id) is None
+    assert clip_repo.get_by_id(clip.id) is None
+    assert asset_repo.list_by_project_id(project.id) == []
+    assert (
+        session.execute(
+            select(ProcessingJobModel).where(ProcessingJobModel.project_id == project.id)
+        ).first()
+        is None
+    )
+
+
+def test_project_repo_delete_is_noop_when_project_not_found(session: Session) -> None:
+    """既に削除済みのproject_idを渡しても例外にならない(DELETEのリトライを許容するため)。"""
+    project_repo = ProjectRepo(session)
+
+    project_repo.delete(uuid.uuid4())

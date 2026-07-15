@@ -37,6 +37,9 @@ class FakeProjectRepo:
         project.updated_at = datetime.now(timezone.utc)
         self._projects[project.id] = deepcopy(project)
 
+    def delete(self, project_id: uuid.UUID) -> None:
+        self._projects.pop(project_id, None)
+
 
 class FakeClipRepo:
     """ClipRepoと同じインターフェースを持つ、DB不要のusecaseテスト用フェイク。"""

@@ -104,6 +104,15 @@ class ProjectRepo:
         project.updated_at = model.updated_at
         self.session.commit()
 
+    def delete(self, project_id: uuid.UUID) -> None:
+        """projectを物理削除する。project_clips等の関連行はFKのON DELETE CASCADEで消える。"""
+        model = self.session.get(ProjectModel, project_id)
+        if model is None:
+            return
+
+        self.session.delete(model)
+        self.session.commit()
+
 
 class ClipRepo:
     """project_clipsテーブルへのアクセスを担う。"""

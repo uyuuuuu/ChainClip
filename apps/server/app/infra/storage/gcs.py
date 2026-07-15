@@ -11,7 +11,7 @@ from google.auth.transport import requests as google_auth_requests
 from google.cloud import exceptions as gcs_exceptions
 from google.cloud import storage
 
-from app.domain.error import GcsObjectNotFoundError
+from app.domain.error import GcsObjectNotFoundError, StorageDeleteError
 
 storage_client = storage.Client()
 
@@ -111,8 +111,23 @@ def upload_json(key: str, data: dict[str, Any]) -> str:
 
 
 def delete_prefix(prefix: str) -> None:
-    """GCS上の指定prefix配下のオブジェクトをすべて削除する。"""
+    """GCS上の指定prefix配下のオブジェクトをすべて削除する。
+
+    列挙後に他の処理が同じblobを消していた場合はNotFoundになるが、
+    削除済みなら目的は達成されているため無視して次のblobに進む。
+    通信エラー等はStorageDeleteErrorとして呼び出し元に伝える。
+    """
     bucket_name = os.environ["GCS_BUCKET_NAME"]
     bucket = storage_client.bucket(bucket_name)
-    for blob in bucket.list_blobs(prefix=prefix):
-        blob.delete()
+    try:
+        blobs = list(bucket.list_blobs(prefix=prefix))
+    except gcs_exceptions.GoogleCloudError as exc:
+        raise StorageDeleteError(f"failed to list gcs objects: {prefix}") from exc
+
+    for blob in blobs:
+        try:
+            blob.delete()
+        except gcs_exceptions.NotFound:
+            continue
+        except gcs_exceptions.GoogleCloudError as exc:
+            raise StorageDeleteError(f"failed to delete gcs object: {blob.name}") from exc

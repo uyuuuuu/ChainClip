@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.dependencies import (
@@ -15,6 +15,7 @@ from app.api.dependencies import (
 )
 from app.infra.db.repository import AssetRepo, ClipRepo, ProjectRepo
 from app.usecase.create_project import create_project
+from app.usecase.delete_project import delete_project
 from app.usecase.get_project_status import get_project_status
 from app.usecase.start_prepare import start_prepare
 from app.usecase.start_render import start_render
@@ -223,3 +224,20 @@ async def get_project_status_endpoint(
         title=result.title,
         description=result.description,
     )
+
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project_endpoint(
+    project_id: uuid.UUID,
+    access_token: str = Depends(get_access_token),
+    project_repo: ProjectRepo = Depends(get_project_repo),
+    asset_repo: AssetRepo = Depends(get_asset_repo),
+) -> Response:
+    """R2/GCS上のファイルを削除してからproject行を物理削除する。"""
+    delete_project(
+        project_repo,
+        asset_repo,
+        project_id=project_id,
+        access_token=access_token,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

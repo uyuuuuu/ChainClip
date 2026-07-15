@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { GradientButton } from "@/components/ui/gradientButton";
 import { Progress } from "@/components/ui/progress";
 import { Text } from "@/components/ui/text";
 import { useProjectStatus } from "@/hooks/useProjectStatus";
@@ -258,31 +259,21 @@ export default function DoneScreen() {
           <View className="flex-1" />
 
           <View className="mx-6 mt-4 mb-8 flex-row justify-center gap-6">
-            <Button
-              className="h-auto py-3 px-6 gap-2 flex-row justify-center items-center"
+            <GradientButton
+              label={isSaving ? "保存中…" : "保存する"}
+              icon={<MaterialCommunityIcons name="content-save" size={24} color="white" />}
               onPress={handleSave}
-              style={{ opacity: isSaving ? 0.4 : 1 }}
-            >
-              <MaterialCommunityIcons
-                name="content-save"
-                size={24}
-                color="white"
-              />
-              <Text className="font-bold text-lg">
-                {isSaving ? "保存中…" : "保存する"}
-              </Text>
-            </Button>
-            <Button
-              className="h-auto py-3 px-6 gap-2 flex-row justify-center items-center"
+              disabled={isSaving}
+              buttonStyle={{ paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 }}
+              textStyle={{ fontSize: 18 }}
+            />
+            <GradientButton
+              label="共有する"
+              icon={<MaterialCommunityIcons name="share-variant" size={24} color="white" />}
               onPress={handleShare}
-            >
-              <MaterialCommunityIcons
-                name="share-variant"
-                size={24}
-                color="white"
-              />
-              <Text className="font-bold text-lg">共有する</Text>
-            </Button>
+              buttonStyle={{ paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 }}
+              textStyle={{ fontSize: 18 }}
+            />
           </View>
 
           {/* ホームへ戻る */}
