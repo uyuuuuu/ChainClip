@@ -281,7 +281,7 @@ export default function DoneScreen() {
             </View>
             ) : (
             <View className="flex-1 items-center justify-center px-8 gap-4">
-                <Text className="text-gray-500">完成動画を生成中…</Text>
+                <Text className="text-center text-xl font-bold text-[#029FFF]">完成動画を生成中…</Text>
             </View>
             )}
         </SafeAreaView>
