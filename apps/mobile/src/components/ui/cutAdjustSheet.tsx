@@ -18,9 +18,6 @@ const ZOOM_MAX = 3;
 const PLAYER_H = 230;       // 中部プレーヤーの高さ
 const DIM_COLOR = 'rgba(0, 0, 0, 0.45)'; // 切り抜き枠の外側に重ねる半透明の黒
 
-// editor.tsx と同じサムネキー（editorで生成済みのサムネを使い回すため）
-const thumbKey = (cut: { clipId: string; startMs: number }) => `${cut.clipId}:${cut.startMs}`;
-
 // ミリ秒 → 00:00:00
 const formatClock = (ms: number): string => {
     const total = Math.floor(ms / 1000);
@@ -88,7 +85,9 @@ export default function CutAdjustSheet({ initialCutId, clipMap, thumbs, muted, o
                         >
                             {timeline.map((cut, i) => {
                                 const selected = cut.cutId === currentCutId;
-                                const uri = thumbs[thumbKey(cut)];
+                                // cutThumbnailsはeditStore上でcutIdをキーにしている。
+                                // editor本体と同じキーで、生成済みサムネイルをそのまま使い回す。
+                                const uri = thumbs[cut.cutId];
                                 return (
                                     <View key={cut.cutId} className="flex-row items-center">
                                         {i > 0 && <View className="h-[2px] w-4 bg-gray-300" />}

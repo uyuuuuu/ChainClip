@@ -43,6 +43,8 @@ type EditState = {
   setCutSec: (sec: number) => void;
   setSceneThumbnail: (sceneId: string, uri: string) => void;
   setCutThumbnail: (cutId: string, uri: string) => void;
+  invalidateSceneThumbnail: (sceneId: string) => void;
+  invalidateCutThumbnail: (cutId: string) => void;
   reset: () => void;
 };
 
@@ -146,6 +148,20 @@ export const useEditStore = create<EditState>()((set) => ({
 
   setCutThumbnail: (cutId, uri) =>
     set((s) => ({ cutThumbnails: { ...s.cutThumbnails, [cutId]: uri } })),
+
+  invalidateSceneThumbnail: (sceneId) =>
+    set((s) => {
+      const sceneThumbnails = { ...s.sceneThumbnails };
+      delete sceneThumbnails[sceneId];
+      return { sceneThumbnails };
+    }),
+
+  invalidateCutThumbnail: (cutId) =>
+    set((s) => {
+      const cutThumbnails = { ...s.cutThumbnails };
+      delete cutThumbnails[cutId];
+      return { cutThumbnails };
+    }),
 
   setTransition: (t) => set({ transition: t }),
 

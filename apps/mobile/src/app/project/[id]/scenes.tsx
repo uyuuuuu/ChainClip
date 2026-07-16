@@ -4,12 +4,12 @@ import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
 import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { useLocalClips } from '@/lib/localClips';
+import { getThumbWithRetry } from '@/lib/thumb';
 import { useEditStore } from '@/stores/editStore';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import * as VideoThumbnails from 'expo-video-thumbnails';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, GestureResponderEvent, Image, Platform, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -25,6 +25,8 @@ type SceneItem = {
     videoUrl: string; // 変換後mp4の署名付きURL
 };
 
+type ThumbnailStatus = 'idle' | 'generating' | 'ready' | 'failed';
+
 export default function ScenesScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const insets = useSafeAreaInsets();
@@ -34,7 +36,7 @@ export default function ScenesScreen() {
     const clips = project?.clips ?? [];
 
     // 変換後mp4を端末のキャッシュへダウンロードする。完了した分だけ clipId → file:// が入る。
-    const { localUris, done: dlDone  } = useLocalClips(project?.clips);
+    const { localUris, done: dlDone  } = useLocalClips(project?.clips ?? undefined);
 
     // ビデオプレーヤーの幅
     const { width: windowWidth } = useWindowDimensions();
@@ -86,6 +88,7 @@ export default function ScenesScreen() {
     // プレビュー中のシーン範囲
     type PreviewRange = { sceneId: string; startMs: number; endMs: number };
     const [preview, setPreview] = useState<PreviewRange | null>(null);
+    const isScreenFocused = useRef(true);
 
     // イベントリスナーから読むためのref(理由は後述)
     const previewRef = useRef<PreviewRange | null>(preview);
@@ -155,7 +158,7 @@ export default function ScenesScreen() {
         const statusSub = player.addListener('statusChange', ({ status }) => {
             setIsReady(status === 'readyToPlay');
             // 動画差し替え後、読み込みが終わったら予約していた位置にシークして再生
-            if (status === 'readyToPlay' && pendingSeekMs.current != null) {
+            if (status === 'readyToPlay' && pendingSeekMs.current != null && isScreenFocused.current) {
                 player.currentTime = pendingSeekMs.current / 1000;
                 pendingSeekMs.current = null;
                 player.play();
@@ -168,6 +171,19 @@ export default function ScenesScreen() {
             statusSub.remove();
         };
     }, [player]);
+
+    // Stack遷移では前画面がアンマウントされないため、フォーカスを失った時点で音声も停止する。
+    useFocusEffect(
+        useCallback(() => {
+            isScreenFocused.current = true;
+            return () => {
+                isScreenFocused.current = false;
+                pendingSeekMs.current = null;
+                player.pause();
+                setIsPlaying(false);
+            };
+        }, [player])
+    );
 
     // 表示に使う「動画の長さ」: プレビュー中はシーンの長さ、未選択ならclip全体
     const displayDuration = preview
@@ -249,6 +265,10 @@ export default function ScenesScreen() {
     const buildTimeline = useEditStore((s) => s.buildTimeline);
     const sceneThumbnails = useEditStore((s) => s.sceneThumbnails);
     const setSceneThumbnail = useEditStore(s => s.setSceneThumbnail);
+    const invalidateSceneThumbnail = useEditStore((s) => s.invalidateSceneThumbnail);
+    const [thumbnailStatus, setThumbnailStatus] = useState<Record<string, ThumbnailStatus>>({});
+    const imageLoadFailures = useRef<Record<string, number>>({});
+    const imageFailureBlockedAt = useRef<Record<string, number>>({});
 
     // サムネイル生成
     // 生成済み(生成中)のシーンID
@@ -264,19 +284,32 @@ export default function ScenesScreen() {
                 if (sceneThumbnails[scene.sceneId]) continue;
                 const localUri = localUris[scene.clipId];
                 if (!localUri) continue;
+                if (imageFailureBlockedAt.current[scene.sceneId] === scene.startMs) continue;
                 if (generatedKeys.current.has(scene.sceneId)) continue;
                 generatedKeys.current.add(scene.sceneId);
+                setThumbnailStatus((s) => ({ ...s, [scene.sceneId]: 'generating' }));
                 try {
-                    const thumb = await VideoThumbnails.getThumbnailAsync(localUri, {
-                        time: scene.startMs, // ミリ秒指定。シーンの先頭フレームをサムネにする
-                    });
+                    const thumbUri = await getThumbWithRetry(localUri, scene.startMs);
                     if (!cancelled) {
                         // 1枚できるたびに反映（全部待たずに順次表示される）
-                        setSceneThumbnail(scene.sceneId, thumb.uri);
+                        setSceneThumbnail(scene.sceneId, thumbUri);
+                        setThumbnailStatus((s) => ({ ...s, [scene.sceneId]: 'ready' }));
                     }
                 } catch (e) {
-                    generatedKeys.current.delete(scene.sceneId); // 失敗したら次回リトライできるように戻す
-                    console.warn('サムネイル生成に失敗:', e);
+                    if (!cancelled) {
+                        setThumbnailStatus((s) => ({ ...s, [scene.sceneId]: 'failed' }));
+                    }
+                    console.warn('サムネイル生成に失敗:', {
+                        screen: 'scenes',
+                        sceneId: scene.sceneId,
+                        clipId: scene.clipId,
+                        timeMs: scene.startMs,
+                        os: Platform.OS,
+                        error: e,
+                    });
+                } finally {
+                    // Setは「生成中」の重複防止だけに使い、開始位置変更や画像破損時は再生成可能にする。
+                    generatedKeys.current.delete(scene.sceneId);
                 }
             }
         };
@@ -286,6 +319,29 @@ export default function ScenesScreen() {
             cancelled = true;
         };
     }, [ALL_SCENES, localUris, sceneThumbnails, setSceneThumbnail]);
+
+    const handleThumbnailLoadError = (scene: SceneItem) => {
+        const failures = (imageLoadFailures.current[scene.sceneId] ?? 0) + 1;
+        imageLoadFailures.current[scene.sceneId] = failures;
+        console.warn('サムネイル画像の読み込みに失敗:', {
+            screen: 'scenes',
+            sceneId: scene.sceneId,
+            clipId: scene.clipId,
+            timeMs: scene.startMs,
+            os: Platform.OS,
+            failures,
+        });
+
+        invalidateSceneThumbnail(scene.sceneId);
+        if (failures < 3) {
+            generatedKeys.current.delete(scene.sceneId);
+            setThumbnailStatus((s) => ({ ...s, [scene.sceneId]: 'generating' }));
+        } else {
+            // 壊れたURIを表示し続けず、自動再生成の無限ループも防ぐ。
+            imageFailureBlockedAt.current[scene.sceneId] = scene.startMs;
+            setThumbnailStatus((s) => ({ ...s, [scene.sceneId]: 'failed' }));
+        }
+    };
 
     // 選択済みシーンのSet
     const selectedIdSet = new Set(selectedScenes.map((s) => s.sceneId));
@@ -488,12 +544,23 @@ export default function ScenesScreen() {
                                         style={{ width: 96, height: 52 }}
                                         className="h-16 w-24 rounded-sm"
                                         resizeMode="cover"
+                                        onLoad={() => {
+                                            imageLoadFailures.current[item.sceneId] = 0;
+                                            delete imageFailureBlockedAt.current[item.sceneId];
+                                            setThumbnailStatus((s) => ({ ...s, [item.sceneId]: 'ready' }));
+                                        }}
+                                        onError={() => handleThumbnailLoadError(item)}
                                     />
                                 ) : (
                                     <View
                                         style={{ width: 96, height: 52 }}
-                                        className="rounded-sm bg-slate-200"
-                                    />
+                                        className="items-center justify-center rounded-sm bg-slate-200"
+                                    >
+                                        {thumbnailStatus[item.sceneId] === 'generating' && <ActivityIndicator size="small" />}
+                                        {thumbnailStatus[item.sceneId] === 'failed' && (
+                                            <MaterialCommunityIcons name="image-off-outline" size={20} color="#94a3b8" />
+                                        )}
+                                    </View>
                                 )}
                                 {/* シーンの長さ */}
                                 <View className="absolute bottom-1 right-1 rounded bg-black/70 px-1">
@@ -550,9 +617,23 @@ export default function ScenesScreen() {
                                     style={{ width: 58, height: 58 }}
                                     className="rounded-sm"
                                     resizeMode="cover"
+                                    onLoad={() => {
+                                        imageLoadFailures.current[scene.sceneId] = 0;
+                                        delete imageFailureBlockedAt.current[scene.sceneId];
+                                        setThumbnailStatus((s) => ({ ...s, [scene.sceneId]: 'ready' }));
+                                    }}
+                                    onError={() => {
+                                        const item = ALL_SCENES.find((s) => s.sceneId === scene.sceneId);
+                                        if (item) handleThumbnailLoadError(item);
+                                    }}
                                 />
                             ) : (
-                                <View style={{ width: 58, height: 58 }} className="rounded-sm bg-slate-200" />
+                                <View style={{ width: 58, height: 58 }} className="items-center justify-center rounded-sm bg-slate-200">
+                                    {thumbnailStatus[scene.sceneId] === 'generating' && <ActivityIndicator size="small" />}
+                                    {thumbnailStatus[scene.sceneId] === 'failed' && (
+                                        <MaterialCommunityIcons name="image-off-outline" size={18} color="#94a3b8" />
+                                    )}
+                                </View>
                             )}
                             {/* 削除ボタン */}
                             <Pressable

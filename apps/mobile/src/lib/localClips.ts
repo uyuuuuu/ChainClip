@@ -29,6 +29,8 @@ export type LocalClipsState = {
 const CLIP_DIR = `${FileSystem.cacheDirectory}clips/`;
 
 const localPath = (clipId: string) => `${CLIP_DIR}${clipId}.mp4`;
+const temporaryPath = (clipId: string) => `${CLIP_DIR}${clipId}.mp4.part`;
+const inFlightDownloads = new Map<string, Promise<string>>();
 
 async function ensureDir() {
   await FileSystem.makeDirectoryAsync(CLIP_DIR, { intermediates: true }).catch(() => {});
@@ -43,7 +45,25 @@ export async function ensureLocalClip(
   url: string,
   onProgress?: (ratio: number) => void
 ): Promise<string> {
+  const existing = inFlightDownloads.get(clipId);
+  if (existing) return existing;
+
+  const task = downloadLocalClip(clipId, url, onProgress);
+  inFlightDownloads.set(clipId, task);
+  try {
+    return await task;
+  } finally {
+    inFlightDownloads.delete(clipId);
+  }
+}
+
+async function downloadLocalClip(
+  clipId: string,
+  url: string,
+  onProgress?: (ratio: number) => void
+): Promise<string> {
   const path = localPath(clipId);
+  const tempPath = temporaryPath(clipId);
   const info = await FileSystem.getInfoAsync(path);
   if (info.exists && (info.size ?? 0) > 0) {
     onProgress?.(1);
@@ -51,14 +71,26 @@ export async function ensureLocalClip(
   }
 
   await ensureDir();
-  const download = FileSystem.createDownloadResumable(url, path, {}, (p) => {
+  // 中断ファイルを完成品として再利用しないよう、一時ファイルへ保存する。
+  await FileSystem.deleteAsync(tempPath, { idempotent: true });
+  const download = FileSystem.createDownloadResumable(url, tempPath, {}, (p) => {
     if (p.totalBytesExpectedToWrite > 0) {
       onProgress?.(p.totalBytesWritten / p.totalBytesExpectedToWrite);
     }
   });
-  const result = await download.downloadAsync();
-  if (!result) throw new Error(`download interrupted: ${clipId}`);
-  return result.uri;
+  try {
+    const result = await download.downloadAsync();
+    if (!result) throw new Error(`download interrupted: ${clipId}`);
+    const downloaded = await FileSystem.getInfoAsync(tempPath);
+    if (!downloaded.exists || (downloaded.size ?? 0) <= 0) {
+      throw new Error(`downloaded file is empty: ${clipId}`);
+    }
+    await FileSystem.moveAsync({ from: tempPath, to: path });
+    return path;
+  } catch (error) {
+    await FileSystem.deleteAsync(tempPath, { idempotent: true }).catch(() => {});
+    throw error;
+  }
 }
 
 /** デバッグや容量対策用: キャッシュしたclipを全部消す */
