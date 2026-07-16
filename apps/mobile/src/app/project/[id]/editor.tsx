@@ -1023,6 +1023,7 @@ export default function EditorScreen() {
                 <CutAdjustSheet
                     initialCutId={selectedCut.cutId}
                     clipMap={clipMap}
+                    localUris={localUris}
                     thumbs={thumbs}
                     muted={muted}
                     onClose={handleCloseCropSheet}

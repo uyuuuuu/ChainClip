@@ -1,9 +1,9 @@
 import { Text } from '@/components/ui/text';
 import type { ClipMap } from '@/lib/clipMap';
+import { getThumbWithRetry } from '@/lib/thumb';
 import { useEditStore, type Cut, type Transform } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -42,12 +42,13 @@ const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min)
 type Props = {
     initialCutId: string;                 // 開いた時に編集対象にするカット
     clipMap: ClipMap;                     // サーバー clips（署名付きURL・解像度・シーン）
+    localUris: Record<string, string>;    // ダウンロード済みclipId → file:// URI
     thumbs: Record<string, string>;       // editorで生成済みのサムネ（上部タイムラインに使う）
     muted?: boolean;                      // editor側のミュート設定を引き継ぐ
     onClose: (lastCutId: string) => void; // 閉じる時に「最後に編集していたカットID」を返す
 };
 
-export default function CutAdjustSheet({ initialCutId, clipMap, thumbs, muted, onClose }: Props) {
+export default function CutAdjustSheet({ initialCutId, clipMap, localUris, thumbs, muted, onClose }: Props) {
     const timeline = useEditStore((s) => s.timeline);
 
     // いま編集対象になっているカット
@@ -123,7 +124,13 @@ export default function CutAdjustSheet({ initialCutId, clipMap, thumbs, muted, o
                             key={cutId} がポイント。カットが切り替わるたびにコンポーネントごと
                             作り直される（＝前のカットの状態が確実にリセットされ、保存も走る） */}
                         {currentCut ? (
-                            <CutEditor key={currentCut.cutId} cut={currentCut} clipMap={clipMap} muted={muted} />
+                            <CutEditor
+                                key={currentCut.cutId}
+                                cut={currentCut}
+                                clipMap={clipMap}
+                                localUri={localUris[currentCut.clipId]}
+                                muted={muted}
+                            />
                         ) : (
                             <Text className="py-10 text-center text-gray-400">カットがありません</Text>
                         )}
@@ -135,10 +142,21 @@ export default function CutAdjustSheet({ initialCutId, clipMap, thumbs, muted, o
 }
 
 // カット編集
-function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?: boolean }) {
+function CutEditor({
+    cut,
+    clipMap,
+    localUri,
+    muted,
+}: {
+    cut: Cut;
+    clipMap: ClipMap;
+    localUri?: string;
+    muted?: boolean;
+}) {
     const updateCut = useEditStore((s) => s.updateCut);
 
     const clip = clipMap[cut.clipId];
+    const videoUri = localUri ?? clip?.videoUrl ?? null;
     // このカットが属するシーン（フィルムストリップで動かせる範囲になる）
     const scene = clip?.scenes.find((sc) => sc.sceneId === cut.sceneId);
     const sceneStart = scene?.startMs ?? 0;
@@ -215,7 +233,7 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
     }, []);
 
     // ビデオプレーヤー
-    const player = useVideoPlayer(clip?.videoUrl ?? null, (p) => {
+    const player = useVideoPlayer(videoUri, (p) => {
         p.timeUpdateEventInterval = 0.1; // ループの折り返しを細かく判定したいので短めに
         p.loop = false; // 「動画ファイル全体のループ」ではなく「カット範囲のループ」を自前で行う
         p.muted = !!muted;
@@ -251,9 +269,8 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
             }),
         ];
         return () => subs.forEach((s) => s.remove());
-        // リスナー内ではref経由で最新値を読むので、登録は初回の1回だけでよい
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+        // ローカルURIの取得でplayerが差し替わった場合も、新しいplayerへ登録し直す。
+    }, [cutLen, player]);
 
     // まれに登録前にreadyToPlayになっていた場合の保険
     useEffect(() => {
@@ -261,8 +278,7 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
             player.currentTime = startMsRef.current / 1000;
             player.play();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [player]);
 
     /* プレーヤーの表示計算  */
     const [box, setBox] = useState({ w: 0, h: 0 }); // 黒いコンテナの実サイズ
@@ -368,35 +384,42 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
 
     /* フィルムストリップ用サムネイル生成 */
     const thumbCount = Math.min(Math.ceil(stripW / FILM_THUMB_W), MAX_FILM_THUMBS);
+    // 上限30枚に達した場合も、シーン全体の幅を隙間なく覆う。
+    const filmThumbWidth = stripW / thumbCount;
     const [filmThumbs, setFilmThumbs] = useState<(string | null)[]>([]);
 
     useEffect(() => {
         let cancelled = false; // 画面を離れた後にsetStateしないためのフラグ
+        setFilmThumbs(new Array(thumbCount).fill(null));
         (async () => {
-            if (!clip) return;
-            try {
-                // サーバーの署名付きURLをそのまま渡してフィルムストリップを生成する
-                const arr: (string | null)[] = new Array(thumbCount).fill(null);
-                for (let i = 0; i < thumbCount; i++) {
-                    // サムネi枚目の左端が指す時刻
-                    const timeMs = Math.round(
-                        sceneStart + Math.min((i * FILM_THUMB_W) / pxPerMs, sceneLen - 1)
-                    );
-                    const { uri } = await VideoThumbnails.getThumbnailAsync(clip.videoUrl, { time: timeMs });
+            if (!videoUri) return;
+            const arr: (string | null)[] = new Array(thumbCount).fill(null);
+            for (let i = 0; i < thumbCount; i++) {
+                // 枚数を上限で間引いた場合も、先頭から末尾まで均等な時刻を生成する。
+                const timeMs = Math.round(
+                    sceneStart + Math.min(((i + 0.5) / thumbCount) * sceneLen, sceneLen - 1)
+                );
+                try {
+                    const uri = await getThumbWithRetry(videoUri, timeMs);
                     if (cancelled) return;
                     arr[i] = uri;
                     setFilmThumbs([...arr]); // 生成できた分から順に表示する
+                } catch (e) {
+                    // 1枚の失敗で末尾まで生成が止まらないよう、次の時刻へ進む。
+                    console.warn('フィルムストリップのサムネ生成に失敗:', {
+                        cutId: cut.cutId,
+                        clipId: cut.clipId,
+                        index: i,
+                        timeMs,
+                        error: e,
+                    });
                 }
-            } catch (e) {
-                console.warn('フィルムストリップのサムネ生成に失敗:', e);
             }
         })();
         return () => {
             cancelled = true;
         };
-        // このコンポーネントはカットごとに作り直されるので、初回1回だけでよい
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [cut.clipId, cut.cutId, sceneLen, sceneStart, thumbCount, videoUri]);
 
     if (!clip) {
         return <Text className="py-10 text-center text-gray-400">動画が見つかりません</Text>;
@@ -585,13 +608,13 @@ function CutEditor({ cut, clipMap, muted }: { cut: Cut; clipMap: ClipMap; muted?
                                             <Image
                                                 key={i}
                                                 source={{ uri: filmThumbs[i]! }}
-                                                style={{ width: FILM_THUMB_W, height: FILM_H }}
+                                                style={{ width: filmThumbWidth, height: FILM_H }}
                                                 resizeMode="cover"
                                             />
                                         ) : (
                                             <View
                                                 key={i}
-                                                style={{ width: FILM_THUMB_W, height: FILM_H }}
+                                                style={{ width: filmThumbWidth, height: FILM_H }}
                                                 className="bg-slate-300"
                                             />
                                         )
