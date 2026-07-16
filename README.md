@@ -16,6 +16,3 @@ https://docs.google.com/presentation/d/1PBrZ-UyWVvxnHPs1zQOaX4I4ruw5b_QYk-q0VVPU
 
 # デモ動画
 https://drive.google.com/file/d/1JO-t1GbTupP2GKs40Qa2EKpf1JD3kDAl/view?usp=sharing
-
-# 作成動画の共有サンプル
-https://chainclip.peach-fi-zz.org/s/tdvoo2G-SsM
