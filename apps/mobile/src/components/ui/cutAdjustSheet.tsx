@@ -59,11 +59,10 @@ export default function CutAdjustSheet({ initialCutId, clipMap, thumbs, muted, o
 
     return (
         <Modal visible transparent animationType="slide" onRequestClose={() => onClose(currentCutId)}>
-            {/* Modalは別のネイティブ画面扱いなので、中でジェスチャーを使うにはRootViewをもう1つ置く */}
             <GestureHandlerRootView style={{ flex: 1 }}>
                 <View className="flex-1 justify-end">
-                    {/* シートの上の暗い部分。タップでも閉じられる */}
-                    <Pressable className="flex-1 bg-black/30" onPress={() => onClose(currentCutId)} />
+                    {/* シートの上の暗い部分 */}
+                    <Pressable className="absolute inset-0 bg-black/30" onPress={() => onClose(currentCutId)} />
 
                     <View className="rounded-t-3xl bg-white pb-10 pt-1">
                         {/* 閉じる（下向き矢印） */}
