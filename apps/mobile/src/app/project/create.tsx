@@ -11,7 +11,7 @@ import { router } from "expo-router";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { useState } from "react";
 import { Image, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 // 画面状態（アップロード前、アップロード後、解析中、解析完了(いらないかも)、解析失敗）
 type ClipStatus = "uploading" | "uploaded" | "processing" | "ready" | "failed";
 
@@ -39,6 +39,8 @@ const GRID_COLUMNS = 3;
 const GRID_GAP = 12;
 
 export default function CreateScreen() {
+  // 画面下部の余白。SafeAreaViewのbottomは使わず、下部固定バーの背景側に自前で足す
+  const insets = useSafeAreaInsets();
   // アップロードした動画
   const [videos, setVideos] = useState<PickedVideo[]>([]);
   // サムネグリッド1マスの一辺(px)。aspectRatioだと削除直後の再レイアウトでたまに潰れて見えるため、
@@ -162,7 +164,7 @@ export default function CreateScreen() {
   }
 
   return (
-    <SafeAreaView className="w-full flex-1 bg-white">
+    <SafeAreaView className="w-full flex-1 bg-white" edges={["top", "left", "right"]}>
       {/* ロゴ */}
       <View className="px-12 pt-4 pb-2 items-center">
         <Image source={logo} className="w-44 h-44" resizeMode="contain" />
@@ -285,8 +287,9 @@ export default function CreateScreen() {
       {/* アップロード後 */}
       {(status === "uploaded" || status === "processing") && (
         <View
-          className="w-full px-6 pt-4 pb-6 items-center bg-white"
+          className="w-full px-6 pt-4 items-center bg-white"
           style={{
+            paddingBottom: insets.bottom + 24,
             shadowColor: "#000",
             shadowOpacity: 0.08,
             shadowRadius: 8,
