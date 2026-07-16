@@ -34,10 +34,10 @@ export const CustomModal = ({
 }: CustomModalProps) => {
   return (
     <AlertDialog open={isOpen} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-[400px]">
+      <AlertDialogContent className="max-w-[360px]">
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+          <AlertDialogTitle className="text-center">{title}</AlertDialogTitle>
+          <AlertDialogDescription className="text-center">{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="mt-4 flex-row item-center justify-center gap-8">
           <AlertDialogCancel className="w-32">

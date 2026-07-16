@@ -2,6 +2,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { GradientButton } from '@/components/ui/gradientButton';
 import { Progress } from '@/components/ui/progress';
 import { Text } from '@/components/ui/text';
+import { CustomModal } from '@/components/ui/customModal';
+import { useQueryClient } from '@tanstack/react-query';
+import { useDeleteProject } from '@/hooks/useDeleteProject';
 import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { useLocalClips } from '@/lib/localClips';
 import { useEditStore } from '@/stores/editStore';
@@ -9,7 +12,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+import { Alert, ActivityIndicator, FlatList, GestureResponderEvent, Image, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -32,6 +35,9 @@ export default function ScenesScreen() {
     // GET /projects/{id} を polling。preparing→ready で clips(scenes+署名付きURL) が揃う。
     const { data: project, isError, refetch } = useProjectStatus(id);
     const clips = project?.clips ?? [];
+    
+    const deleteProjectMut = useDeleteProject();
+    const queryClient = useQueryClient();
 
     // 変換後mp4を端末のキャッシュへダウンロードする。完了した分だけ clipId → file:// が入る。
     const { localUris, done: dlDone  } = useLocalClips(project?.clips);
@@ -89,6 +95,9 @@ export default function ScenesScreen() {
 
     // イベントリスナーから読むためのref(理由は後述)
     const previewRef = useRef<PreviewRange | null>(preview);
+    
+    // モーダルが表示されているかどうか
+    const [isConfirmModal, setIsConfirmModal] = useState(false);
 
     // stateとrefを常にセットで更新するヘルパー
     const setPreviewRange = (p: PreviewRange | null) => {
@@ -112,6 +121,34 @@ export default function ScenesScreen() {
         const m = Math.floor(total / 60);
         const s = total % 60;
         return `${m}:${String(s).padStart(2, '0')}`;
+    };
+    
+    // 戻るボタン押す
+    const handleBackPress = () => {
+        setIsConfirmModal(true);
+    };
+    
+    // モーダルのOKを押した時
+    const handleBackConfirm = () => {
+        if (deleteProjectMut.isPending) return;
+        deleteProjectMut.mutate(id, {
+            onSuccess: () => {
+                // このプロジェクトのpolling(useProjectStatus)を止める。
+                // 削除済みのprojectへGETを投げ続けて404になるのを防ぐ
+                queryClient.removeQueries({ queryKey: ['project', id] });
+                reset();          // 選択シーン・タイムラインをクリア
+                router.push({
+                    pathname: '/project/create'
+                });
+            },
+            onError: (error) => {
+                console.error('deleteProject failed:', error);
+                Alert.alert(
+                        '削除に失敗しました',
+                        `通信状況をご確認のうえ、もう一度お試しください\n\n${String(error)}`,
+                );
+            },
+        });
     };
 
     // プレーヤーの状態をUIに反映
@@ -336,7 +373,7 @@ export default function ScenesScreen() {
             <SafeAreaView className="w-full flex-1 bg-white">
                 <View className="h-16 flex-row items-center justify-center">
                     <Pressable
-                        onPress={() => router.back()}
+                        onPress={handleBackPress}
                         className="absolute left-2 p-2">
                         <MaterialCommunityIcons name="chevron-left" size={48} color="#262626" />
                     </Pressable>
@@ -387,7 +424,7 @@ export default function ScenesScreen() {
             {/* ヘッダー */}
             <View className="h-16 flex-row items-center justify-center">
                 <Pressable
-                    onPress={() => router.back()}
+                    onPress={handleBackPress}
                     className="absolute left-2 p-2">
                     <MaterialCommunityIcons name="chevron-left" size={48} color="#262626" />
                 </Pressable>
@@ -588,7 +625,13 @@ export default function ScenesScreen() {
                     />
                 </View>
             </View>
-
+            <CustomModal
+                isOpen={isConfirmModal}
+                onOpenChange={setIsConfirmModal}
+                title="ホームに戻ってもよろしいですか"
+                description="作業内容は破棄されます"
+                onConfirm={handleBackConfirm}
+            />
         </SafeAreaView >
     );
 }

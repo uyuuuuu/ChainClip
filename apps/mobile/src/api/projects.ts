@@ -69,3 +69,15 @@ export async function startRender(
     },
   );
 }
+
+/**
+ * DELETE /projects/{projectId}
+ * R2/GCSのファイルとDB行を削除する。成功時は204(ボディなし)。
+ * accessToken は apiFetch が projectId から解決し Authorization ヘッダに付与する。
+ */
+export async function deleteProject(projectId: string): Promise<void> {
+  await apiFetch<void>(`/projects/${projectId}`, {
+    method: "DELETE",
+    projectId,
+  });
+}
