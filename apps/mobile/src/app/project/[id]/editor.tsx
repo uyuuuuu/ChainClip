@@ -6,6 +6,7 @@ import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { buildClipMap, type ClipMap } from '@/lib/clipMap';
 import { useLocalClips } from '@/lib/localClips';
 import { getThumbWithRetry } from '@/lib/thumb';
+import { pauseVideoPlayerSafely } from '@/lib/videoPlayer';
 import { useEditStore, type Cut } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -228,7 +229,11 @@ export default function EditorScreen() {
         getPlayer(other).pause();
 
         await loadCutInto(key, cut, opts.seekMs ?? cut.startMs);
-        if (opts.autoplay && isScreenFocused.current) getPlayer(key).play();
+        if (!isScreenFocused.current) {
+            pauseVideoPlayerSafely(getPlayer(key));
+            return;
+        }
+        if (opts.autoplay) getPlayer(key).play();
         else getPlayer(key).pause();
 
         // 次のカットを裏のプレーヤーに先読み
@@ -275,8 +280,8 @@ export default function EditorScreen() {
                 await loadCutInto(newKey, next);
             }
             if (!isScreenFocused.current) {
-                newPlayer.pause();
-                oldPlayer.pause();
+                pauseVideoPlayerSafely(newPlayer);
+                pauseVideoPlayerSafely(oldPlayer);
                 return;
             }
             prepared.current[newKey] = null;
@@ -288,8 +293,7 @@ export default function EditorScreen() {
             activeKeyRef.current = newKey;
             setActiveKey(newKey); // 表になったプレーヤーだけが画面に見える
 
-            if (isScreenFocused.current) newPlayer.play();
-            else newPlayer.pause();
+            newPlayer.play();
             oldPlayer.pause(); // 前のカット側は裏に回して停止
         } finally {
             advancing.current = false;
@@ -380,8 +384,8 @@ export default function EditorScreen() {
             isScreenFocused.current = true;
             return () => {
                 isScreenFocused.current = false;
-                playerA.pause();
-                playerB.pause();
+                pauseVideoPlayerSafely(playerA);
+                pauseVideoPlayerSafely(playerB);
                 (['A', 'B'] as const).forEach((key) => {
                     const pending = pendingSeek.current[key];
                     pendingSeek.current[key] = null;

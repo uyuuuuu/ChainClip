@@ -3,6 +3,7 @@ import { GradientButton } from "@/components/ui/gradientButton";
 import { Progress } from "@/components/ui/progress";
 import { Text } from "@/components/ui/text";
 import { useProjectStatus } from "@/hooks/useProjectStatus";
+import { pauseVideoPlayerSafely } from "@/lib/videoPlayer";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Directory, File, Paths } from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
@@ -106,7 +107,7 @@ export default function DoneScreen() {
       isScreenFocused.current = true;
       return () => {
         isScreenFocused.current = false;
-        player.pause();
+        pauseVideoPlayerSafely(player);
         setIsPlaying(false);
       };
     }, [player]),

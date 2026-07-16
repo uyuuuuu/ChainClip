@@ -5,6 +5,7 @@ import { Text } from '@/components/ui/text';
 import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { useLocalClips } from '@/lib/localClips';
 import { getThumbWithRetry } from '@/lib/thumb';
+import { pauseVideoPlayerSafely } from '@/lib/videoPlayer';
 import { useEditStore } from '@/stores/editStore';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -179,7 +180,7 @@ export default function ScenesScreen() {
             return () => {
                 isScreenFocused.current = false;
                 pendingSeekMs.current = null;
-                player.pause();
+                pauseVideoPlayerSafely(player);
                 setIsPlaying(false);
             };
         }, [player])

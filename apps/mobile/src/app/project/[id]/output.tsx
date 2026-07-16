@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CustomModal } from '@/components/ui/customModal';
 import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { buildClipMap, type ClipMap } from '@/lib/clipMap';
+import { pauseVideoPlayerSafely } from '@/lib/videoPlayer';
 import { useEditStore, type Cut } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -187,7 +188,11 @@ export default function ConfigScreen() {
         getPlayer(other).pause();
 
         await loadCutInto(key, cut, opts.seekMs ?? cut.startMs);
-        if (opts.autoplay && isScreenFocused.current) getPlayer(key).play();
+        if (!isScreenFocused.current) {
+            pauseVideoPlayerSafely(getPlayer(key));
+            return;
+        }
+        if (opts.autoplay) getPlayer(key).play();
         else getPlayer(key).pause();
 
         // 次のカットを裏のプレーヤーに先読み
@@ -234,8 +239,8 @@ export default function ConfigScreen() {
                 await loadCutInto(newKey, next);
             }
             if (!isScreenFocused.current) {
-                newPlayer.pause();
-                oldPlayer.pause();
+                pauseVideoPlayerSafely(newPlayer);
+                pauseVideoPlayerSafely(oldPlayer);
                 return;
             }
             prepared.current[newKey] = null;
@@ -359,8 +364,8 @@ export default function ConfigScreen() {
             isScreenFocused.current = true;
             return () => {
                 isScreenFocused.current = false;
-                playerA.pause();
-                playerB.pause();
+                pauseVideoPlayerSafely(playerA);
+                pauseVideoPlayerSafely(playerB);
                 (['A', 'B'] as const).forEach((key) => {
                     const pending = pendingSeek.current[key];
                     pendingSeek.current[key] = null;
