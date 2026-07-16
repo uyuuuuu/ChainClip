@@ -7,11 +7,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { CustomModal } from '@/components/ui/customModal';
 import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { buildClipMap, type ClipMap } from '@/lib/clipMap';
+import { pauseVideoPlayerSafely } from '@/lib/videoPlayer';
 import { useEditStore, type Cut } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, GestureResponderEvent, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, View, useWindowDimensions, type TextInput } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -143,6 +144,7 @@ export default function ConfigScreen() {
     const advancing = useRef(false);
     // シーク直後に届く「古い再生位置」のイベントを無視する期限
     const ignoreTimeUpdateUntil = useRef(0);
+    const isScreenFocused = useRef(true);
 
     // カットを指定したプレーヤーに読み込む
     const loadCutInto = (key: PlayerKey, cut: Cut, seekMs = cut.startMs) =>
@@ -186,6 +188,10 @@ export default function ConfigScreen() {
         getPlayer(other).pause();
 
         await loadCutInto(key, cut, opts.seekMs ?? cut.startMs);
+        if (!isScreenFocused.current) {
+            pauseVideoPlayerSafely(getPlayer(key));
+            return;
+        }
         if (opts.autoplay) getPlayer(key).play();
         else getPlayer(key).pause();
 
@@ -210,6 +216,7 @@ export default function ConfigScreen() {
 
     // 次のカットへ進む
     const advance = async () => {
+        if (!isScreenFocused.current) return;
         if (advancing.current) return;
         advancing.current = true;
         try {
@@ -230,6 +237,11 @@ export default function ConfigScreen() {
             const newPlayer = getPlayer(newKey);
             if (prepared.current[newKey] !== next.cutId) {
                 await loadCutInto(newKey, next);
+            }
+            if (!isScreenFocused.current) {
+                pauseVideoPlayerSafely(newPlayer);
+                pauseVideoPlayerSafely(oldPlayer);
+                return;
             }
             prepared.current[newKey] = null;
 
@@ -346,6 +358,23 @@ export default function ConfigScreen() {
         return () => subs.forEach((s) => s.remove());
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            isScreenFocused.current = true;
+            return () => {
+                isScreenFocused.current = false;
+                pauseVideoPlayerSafely(playerA);
+                pauseVideoPlayerSafely(playerB);
+                (['A', 'B'] as const).forEach((key) => {
+                    const pending = pendingSeek.current[key];
+                    pendingSeek.current[key] = null;
+                    pending?.resolve();
+                });
+                setIsPlaying(false);
+            };
+        }, [playerA, playerB])
+    );
 
     // 画面に入った瞬間、先頭カットを表示
     useEffect(() => {

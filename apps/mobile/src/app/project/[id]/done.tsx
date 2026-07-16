@@ -3,13 +3,14 @@ import { GradientButton } from "@/components/ui/gradientButton";
 import { Progress } from "@/components/ui/progress";
 import { Text } from "@/components/ui/text";
 import { useProjectStatus } from "@/hooks/useProjectStatus";
+import { pauseVideoPlayerSafely } from "@/lib/videoPlayer";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Directory, File, Paths } from "expo-file-system";
 import * as MediaLibrary from "expo-media-library";
 import { Asset } from "expo-media-library";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { VideoView, useVideoPlayer } from "expo-video";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -50,6 +51,7 @@ export default function DoneScreen() {
     p.timeUpdateEventInterval = 0.25;
     p.loop = false;
   });
+  const isScreenFocused = useRef(true);
   useEffect(() => {
     if (finalVideoUrl) {
       player
@@ -90,7 +92,7 @@ export default function DoneScreen() {
           // 読み込み完了時に動画の長さを取得（秒 → ms）
           setDurationMs(player.duration * 1000);
           // 開いた直後は真っ黒に見えるため、自動で再生を始める
-          player.play();
+          if (isScreenFocused.current) player.play();
         }
       }),
       player.addListener("timeUpdate", ({ currentTime }) => {
@@ -99,6 +101,17 @@ export default function DoneScreen() {
     ];
     return () => subs.forEach((s) => s.remove());
   }, [player]);
+
+  useFocusEffect(
+    useCallback(() => {
+      isScreenFocused.current = true;
+      return () => {
+        isScreenFocused.current = false;
+        pauseVideoPlayerSafely(player);
+        setIsPlaying(false);
+      };
+    }, [player]),
+  );
 
   // 再生 / 停止の切り替え
   const togglePlay = () => {

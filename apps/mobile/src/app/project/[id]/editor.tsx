@@ -5,22 +5,24 @@ import { Text } from '@/components/ui/text';
 import { useProjectStatus } from '@/hooks/useProjectStatus';
 import { buildClipMap, type ClipMap } from '@/lib/clipMap';
 import { useLocalClips } from '@/lib/localClips';
+import { getThumbWithRetry } from '@/lib/thumb';
+import { pauseVideoPlayerSafely } from '@/lib/videoPlayer';
 import { useEditStore, type Cut } from '@/stores/editStore';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, GestureResponderEvent, Image, Pressable, Switch, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, GestureResponderEvent, Image, Platform, Pressable, Switch, View } from 'react-native';
 import DraggableFlatList, { useOnCellActiveAnimation, type RenderItemParams } from 'react-native-draggable-flatlist';
 import Reanimated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as VideoThumbnails from 'expo-video-thumbnails';
 
 // 2つのプレーヤーの識別子
 // 表: いま画面に見えている方 / 裏: 次のカットを先読みしておく方
 // 先読みをさせることで、別動画の読み込み時間を削減してラグを防ぐ
 type PlayerKey = 'A' | 'B';
+type ThumbnailStatus = 'idle' | 'generating' | 'ready' | 'failed';
 
 // カットがどのシーン由来かを clipId と開始位置から逆引きして、ラベルを取り出す
 // （storeのCutはラベルを持っていないため）
@@ -96,9 +98,8 @@ const CutScaleDecorator = ({ children }: { children: ReactNode }) => {
 export default function EditorScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
 
-    const { localUris } = useLocalClips(project?.clips);
-
     const { data: project } = useProjectStatus(id);
+    const { localUris } = useLocalClips(project?.clips ?? undefined);
     const clipMap = useMemo<ClipMap>(() => buildClipMap(project?.clips), [project?.clips]);
 
     /* Zustand: タイムラインの状態 */
@@ -158,6 +159,11 @@ export default function EditorScreen() {
     // サムネイル
     const thumbs = useEditStore((s) => s.cutThumbnails);
     const setCutThumbnail = useEditStore((s) => s.setCutThumbnail);
+    const invalidateCutThumbnail = useEditStore((s) => s.invalidateCutThumbnail);
+    const [thumbnailStatus, setThumbnailStatus] = useState<Record<string, ThumbnailStatus>>({});
+    const imageLoadFailures = useRef<Record<string, number>>({});
+    const imageFailureBlockedAt = useRef<Record<string, number>>({});
+    const isScreenFocused = useRef(true);
 
     // イベントリスナーから最新値を読む用のref
     const timelineRef = useRef(timeline);
@@ -223,6 +229,10 @@ export default function EditorScreen() {
         getPlayer(other).pause();
 
         await loadCutInto(key, cut, opts.seekMs ?? cut.startMs);
+        if (!isScreenFocused.current) {
+            pauseVideoPlayerSafely(getPlayer(key));
+            return;
+        }
         if (opts.autoplay) getPlayer(key).play();
         else getPlayer(key).pause();
 
@@ -247,6 +257,7 @@ export default function EditorScreen() {
 
     // 次のカットへ進む
     const advance = async () => {
+        if (!isScreenFocused.current) return;
         if (advancing.current) return;
         advancing.current = true;
         try {
@@ -267,6 +278,11 @@ export default function EditorScreen() {
             const newPlayer = getPlayer(newKey);
             if (prepared.current[newKey] !== next.cutId) {
                 await loadCutInto(newKey, next);
+            }
+            if (!isScreenFocused.current) {
+                pauseVideoPlayerSafely(newPlayer);
+                pauseVideoPlayerSafely(oldPlayer);
+                return;
             }
             prepared.current[newKey] = null;
 
@@ -362,6 +378,24 @@ export default function EditorScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // push後も画面インスタンスは残るので、非表示になった瞬間に表裏両方を止める。
+    useFocusEffect(
+        useCallback(() => {
+            isScreenFocused.current = true;
+            return () => {
+                isScreenFocused.current = false;
+                pauseVideoPlayerSafely(playerA);
+                pauseVideoPlayerSafely(playerB);
+                (['A', 'B'] as const).forEach((key) => {
+                    const pending = pendingSeek.current[key];
+                    pendingSeek.current[key] = null;
+                    pending?.resolve();
+                });
+                setIsPlaying(false);
+            };
+        }, [playerA, playerB])
+    );
+
     // clipMap が揃ったら先頭カットをプレビューに読み込む（一度だけ）。
     // clips 取得は非同期なので、mount 時点では clipMap が空のことがある。
     const didInitialLoad = useRef(false);
@@ -391,18 +425,32 @@ export default function EditorScreen() {
                 if (!clip) continue; // clipMap未取得。次回(clipMap更新)にリトライさせるため記録しない
                 const localUri = localUris[cut.clipId];
                 if (!localUri) continue;
+                if (imageFailureBlockedAt.current[cut.cutId] === cut.startMs) continue;
                 generatedKeys.current.add(cut.cutId);
+                setThumbnailStatus((s) => ({ ...s, [cut.cutId]: 'generating' }));
                 try {
                     if (cancelled) return;
-                    const result = await VideoThumbnails.getThumbnailAsync(localUri, {
-                        time: scene.startMs,
-                    });
+                    const thumbnailUri = await getThumbWithRetry(localUri, cut.startMs);
                     if (!cancelled) {
-                        setCutThumbnail(cut.cutId, result.uri);
+                        setCutThumbnail(cut.cutId, thumbnailUri);
+                        setThumbnailStatus((s) => ({ ...s, [cut.cutId]: 'ready' }));
                     }
                 } catch (e) {
-                    generatedKeys.current.delete(key); // 失敗したら次回リトライできるように戻す
-                    console.warn('サムネイル生成に失敗:', e);
+                    if (!cancelled) {
+                        setThumbnailStatus((s) => ({ ...s, [cut.cutId]: 'failed' }));
+                    }
+                    console.warn('サムネイル生成に失敗:', {
+                        screen: 'editor',
+                        cutId: cut.cutId,
+                        sceneId: cut.sceneId,
+                        clipId: cut.clipId,
+                        timeMs: cut.startMs,
+                        os: Platform.OS,
+                        error: e,
+                    });
+                } finally {
+                    // カット開始位置変更でthumbが無効化された場合に、同じcutIdでも再生成できるようにする。
+                    generatedKeys.current.delete(cut.cutId);
                 }
             }
         };
@@ -412,6 +460,29 @@ export default function EditorScreen() {
             cancelled = true;
         };
     }, [timeline, clipMap, localUris, thumbs, setCutThumbnail]);
+
+    const handleThumbnailLoadError = (cut: Cut) => {
+        const failures = (imageLoadFailures.current[cut.cutId] ?? 0) + 1;
+        imageLoadFailures.current[cut.cutId] = failures;
+        console.warn('サムネイル画像の読み込みに失敗:', {
+            screen: 'editor',
+            cutId: cut.cutId,
+            sceneId: cut.sceneId,
+            clipId: cut.clipId,
+            timeMs: cut.startMs,
+            os: Platform.OS,
+            failures,
+        });
+
+        invalidateCutThumbnail(cut.cutId);
+        if (failures < 3) {
+            generatedKeys.current.delete(cut.cutId);
+            setThumbnailStatus((s) => ({ ...s, [cut.cutId]: 'generating' }));
+        } else {
+            imageFailureBlockedAt.current[cut.cutId] = cut.startMs;
+            setThumbnailStatus((s) => ({ ...s, [cut.cutId]: 'failed' }));
+        }
+    };
 
     // 再生/停止の切り替え
     const togglePlay = () => {
@@ -571,9 +642,20 @@ export default function EditorScreen() {
                                 source={{ uri: thumb }}
                                 style={{ width: 80, height: 80 }}
                                 resizeMode="cover"
+                                onLoad={() => {
+                                    imageLoadFailures.current[cut.cutId] = 0;
+                                    delete imageFailureBlockedAt.current[cut.cutId];
+                                    setThumbnailStatus((s) => ({ ...s, [cut.cutId]: 'ready' }));
+                                }}
+                                onError={() => handleThumbnailLoadError(cut)}
                             />
                         ) : (
-                            <View style={{ width: 80, height: 80 }} className="bg-slate-200" />
+                            <View style={{ width: 80, height: 80 }} className="items-center justify-center bg-slate-200">
+                                {thumbnailStatus[cut.cutId] === 'generating' && <ActivityIndicator size="small" />}
+                                {thumbnailStatus[cut.cutId] === 'failed' && (
+                                    <MaterialCommunityIcons name="image-off-outline" size={20} color="#94a3b8" />
+                                )}
+                            </View>
                         )}
                         {/* 並び替え用ハンドル */}
                         <Pressable
@@ -866,12 +948,23 @@ export default function EditorScreen() {
                                         style={{ width: 84, height: 84 }}
                                         className="rounded-md"
                                         resizeMode="cover"
+                                        onLoad={() => {
+                                            imageLoadFailures.current[selectedCut.cutId] = 0;
+                                            delete imageFailureBlockedAt.current[selectedCut.cutId];
+                                            setThumbnailStatus((s) => ({ ...s, [selectedCut.cutId]: 'ready' }));
+                                        }}
+                                        onError={() => handleThumbnailLoadError(selectedCut)}
                                     />
                                 ) : (
                                     <View
                                         style={{ width: 84, height: 84 }}
-                                        className="rounded-md bg-slate-200"
-                                    />
+                                        className="items-center justify-center rounded-md bg-slate-200"
+                                    >
+                                        {thumbnailStatus[selectedCut.cutId] === 'generating' && <ActivityIndicator size="small" />}
+                                        {thumbnailStatus[selectedCut.cutId] === 'failed' && (
+                                            <MaterialCommunityIcons name="image-off-outline" size={20} color="#94a3b8" />
+                                        )}
+                                    </View>
                                 )}
                                 <View className="absolute bottom-1 right-1 rounded bg-black/70 px-1">
                                     <Text className="text-[10px] text-white">
@@ -934,6 +1027,7 @@ export default function EditorScreen() {
                 <CutAdjustSheet
                     initialCutId={selectedCut.cutId}
                     clipMap={clipMap}
+                    localUris={localUris}
                     thumbs={thumbs}
                     muted={muted}
                     onClose={handleCloseCropSheet}
