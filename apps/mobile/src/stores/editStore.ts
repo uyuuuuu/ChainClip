@@ -120,7 +120,8 @@ export const useEditStore = create<EditState>()((set) => ({
     set((s) => {
       const i = s.timeline.findIndex((c) => c.cutId === cutId);
       if (i === -1) return s;
-      const copy = { ...s.timeline[i], cutId: Crypto.randomUUID() };
+        const newCutId = Crypto.randomUUID();
+      const copy = { ...s.timeline[i], cutId: newCutId };
       const next = [...s.timeline];
       next.splice(i + 1, 0, copy);
       const originalThumb = s.cutThumbnails[cutId];
